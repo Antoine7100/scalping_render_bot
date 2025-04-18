@@ -3,36 +3,46 @@ import os
 import pandas as pd
 import time
 import logging
+import matplotlib.pyplot as plt
 from datetime import datetime
 import requests
+import talib
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# Clés API (à définir dans l'environnement)
+# Clés API
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
-# Telegram (à personnaliser)
-TELEGRAM_BOT_TOKEN = "TON_TOKEN"
-TELEGRAM_CHAT_ID = "TON_CHAT_ID"
+# Clés Telegram
+TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
+TELEGRAM_CHAT_ID = "123456789"  # Remplace par ton vrai chat_id
 
-# Initialisation Bybit
+# Initialiser Bybit
 exchange = ccxt.bybit({
     'apiKey': api_key,
     'secret': api_secret,
     'enableRateLimit': True,
-    'options': {'defaultType': 'future'}
+    'options': {
+        'defaultType': 'future'
+    }
 })
 
 symbol = "BTC/USDT"
 timeframe = '1h'
 limit = 100
 risk_percent = 0.02
-profit_target = 0.02
+profit_target = 0.08
 stop_loss_percent = 0.015
+trailing_stop_trigger = 0.03  # Déclenchement à +3%
+trailing_stop_distance = 0.01  # Suivi à -1%
 log_file = "trades_log.csv"
+active_position = False
+entry_price = 0.0
+highest_price = 0.0
 
+# Fonction pour envoyer un message Telegram
 def send_telegram_message(msg):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -41,6 +51,7 @@ def send_telegram_message(msg):
     except Exception as e:
         logging.error(f"Erreur Telegram : {e}")
 
+# Fonction pour calculer les niveaux de Fibonacci
 def fibonacci_levels(high, low):
     diff = high - low
     return {
@@ -51,12 +62,26 @@ def fibonacci_levels(high, low):
         "0.786": high - diff * 0.786
     }
 
+# Fonction pour récupérer les données de marché
 def get_ohlcv():
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
     return df
 
+# RSI, MACD, EMA, Bollinger
+def get_indicators(df):
+    df['rsi'] = talib.RSI(df['close'], timeperiod=14)
+    macd, macdsignal, macdhist = talib.MACD(df['close'], fastperiod=12, slowperiod=26, signalperiod=9)
+    df['macd'] = macd
+    df['macdsignal'] = macdsignal
+    df['ema'] = talib.EMA(df['close'], timeperiod=20)
+    upper, middle, lower = talib.BBANDS(df['close'], timeperiod=20)
+    df['bb_upper'] = upper
+    df['bb_lower'] = lower
+    return df
+
+# Enregistrer un trade dans le log CSV
 def log_trade(action, price, qty, tp, sl):
     df = pd.DataFrame([[datetime.now(), action, price, qty, tp, sl]], columns=["datetime", "action", "price", "qty", "take_profit", "stop_loss"])
     if os.path.exists(log_file):
@@ -64,50 +89,106 @@ def log_trade(action, price, qty, tp, sl):
     else:
         df.to_csv(log_file, mode='w', header=True, index=False)
 
+# Graphique avec Fibonacci + annotations
+def show_chart(df, fibs, price):
+    plt.figure(figsize=(12, 6))
+    plt.plot(df['timestamp'], df['close'], label='Prix de clôture')
+    plt.plot(df['timestamp'], df['ema'], label='EMA 20', linestyle='--')
+    for level, p in fibs.items():
+        plt.axhline(y=p, color='gray', linestyle='--', label=f'Fibo {level}')
+    plt.title(f"BTC/USDT avec indicateurs (Prix actuel: {price:.2f})")
+    plt.xlabel("Temps")
+    plt.ylabel("Prix (USDT)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("fibonacci_chart.png")
+    logging.info("📊 Graphique sauvegardé : fibonacci_chart.png")
+
+# Fonction principale
 def run():
+    global active_position, entry_price, highest_price
     df = get_ohlcv()
+    df = get_indicators(df)
+
     high = df['high'].max()
     low = df['low'].min()
     last_price = df['close'].iloc[-1]
+    rsi = df['rsi'].iloc[-1]
+    macd = df['macd'].iloc[-1]
+    macdsignal = df['macdsignal'].iloc[-1]
+    ema = df['ema'].iloc[-1]
+    bb_lower = df['bb_lower'].iloc[-1]
+
     fibs = fibonacci_levels(high, low)
-    open_price = df['open'].iloc[-1]
 
     logging.info(f"Prix actuel: {last_price:.2f} USDT")
+    logging.info(f"RSI: {rsi:.2f} | MACD: {macd:.2f} | Signal: {macdsignal:.2f} | EMA: {ema:.2f} | BB-Lower: {bb_lower:.2f}")
     logging.info(f"Niveaux Fibonacci: {fibs}")
+
+    show_chart(df, fibs, last_price)
 
     amount_usdt = 20
     amount_qty = round(amount_usdt / last_price, 5)
 
-    # Achat agressif si le prix est sous plusieurs niveaux Fibonacci
-    for level in ['0.786', '0.618', '0.5']:
-        if last_price <= fibs[level]:
+    if not active_position:
+        buy_signal = (
+            (last_price <= fibs['0.618'] or last_price <= bb_lower) and
+            rsi < 50 and
+            macd > macdsignal and
+            last_price > ema
+        )
+        if buy_signal:
             try:
                 order = exchange.create_market_buy_order(symbol, amount_qty)
-                tp = round(last_price * (1 + profit_target), 2)
-                sl = round(last_price * (1 - stop_loss_percent), 2)
-                send_telegram_message(f"✅ LONG: {amount_qty} BTC @ {last_price} (TP: {tp}, SL: {sl})")
-                log_trade("BUY", last_price, amount_qty, tp, sl)
-                break
-            except Exception as e:
-                send_telegram_message(f"❌ Erreur achat : {e}")
-                break
+                logging.info(f"💵 Achat exécuté: {order['amount']} {symbol} à {last_price:.2f}")
+                entry_price = last_price
+                highest_price = last_price
+                active_position = True
 
-    # Vente agressive (short) si prix est au-dessus de certains niveaux
-    for level in ['0.236', '0.382']:
-        if last_price >= fibs[level]:
-            try:
-                order = exchange.create_market_sell_order(symbol, amount_qty)
-                tp = round(last_price * (1 - profit_target), 2)
-                sl = round(last_price * (1 + stop_loss_percent), 2)
-                send_telegram_message(f"🔻 SHORT: {amount_qty} BTC @ {last_price} (TP: {tp}, SL: {sl})")
-                log_trade("SELL", last_price, amount_qty, tp, sl)
-                break
+                tp = round(entry_price * (1 + profit_target), 2)
+                sl = round(entry_price * (1 - stop_loss_percent), 2)
+
+                logging.info(f"🎯 TP: {tp} | 🛑 SL: {sl}")
+                send_telegram_message(f"✅ Achat: {amount_qty} BTC à {entry_price} USDT\n🎯 TP: {tp} | 🛑 SL: {sl}")
+                log_trade("BUY", entry_price, amount_qty, tp, sl)
+
             except Exception as e:
-                send_telegram_message(f"❌ Erreur short : {e}")
-                break
+                logging.error(f"Erreur achat: {e}")
+                send_telegram_message(f"❌ Erreur: {e}")
+    else:
+        # Trailing Stop Logic
+        if last_price > highest_price:
+            highest_price = last_price
+            logging.info(f"📈 Nouveau plus haut atteint: {highest_price:.2f}")
+
+        trigger_price = entry_price * (1 + trailing_stop_trigger)
+        if last_price >= trigger_price:
+            trailing_sl = highest_price * (1 - trailing_stop_distance)
+            if last_price <= trailing_sl:
+                active_position = False
+                logging.info(f"🔽 Trailing Stop activé à {last_price:.2f} (seuil: {trailing_sl:.2f})")
+                send_telegram_message(f"🔽 Vente Trailing Stop à {last_price:.2f} USDT")
+                log_trade("SELL-TRAIL", last_price, amount_qty, highest_price, trailing_sl)
+
+        # Stop Loss classique
+        stop_loss_price = round(entry_price * (1 - stop_loss_percent), 2)
+        if last_price <= stop_loss_price:
+            active_position = False
+            logging.info(f"❌ Stop Loss déclenché à {last_price:.2f}")
+            send_telegram_message(f"🚨 SL déclenché à {last_price:.2f} USDT.")
+            log_trade("SELL-SL", last_price, amount_qty, highest_price, stop_loss_price)
+
+        # Take Profit simple
+        take_profit_price = round(entry_price * (1 + profit_target), 2)
+        if last_price >= take_profit_price:
+            active_position = False
+            logging.info(f"🏆 Take Profit atteint à {last_price:.2f}")
+            send_telegram_message(f"💰 TP atteint à {last_price:.2f} USDT !")
+            log_trade("SELL-TP", last_price, amount_qty, take_profit_price, stop_loss_price)
 
 if __name__ == "__main__":
     while True:
         run()
-        time.sleep(60)
+        time.sleep(300)
 
