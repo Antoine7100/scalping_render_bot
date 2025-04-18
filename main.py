@@ -6,7 +6,7 @@ import logging
 import matplotlib.pyplot as plt
 from datetime import datetime
 import requests
-import talib
+import numpy as np
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -17,7 +17,7 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 
 # Clés Telegram
 TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
-TELEGRAM_CHAT_ID = "123456789"  # Remplace par ton vrai chat_id
+TELEGRAM_CHAT_ID = "123456789"  
 
 # Initialiser Bybit
 exchange = ccxt.bybit({
@@ -35,8 +35,8 @@ limit = 100
 risk_percent = 0.02
 profit_target = 0.08
 stop_loss_percent = 0.015
-trailing_stop_trigger = 0.03  # Déclenchement à +3%
-trailing_stop_distance = 0.01  # Suivi à -1%
+trailing_stop_trigger = 0.03
+trailing_stop_distance = 0.01
 log_file = "trades_log.csv"
 active_position = False
 entry_price = 0.0
@@ -70,15 +70,24 @@ def get_ohlcv():
     return df
 
 # RSI, MACD, EMA, Bollinger
+
 def get_indicators(df):
-    df['rsi'] = talib.RSI(df['close'], timeperiod=14)
-    macd, macdsignal, macdhist = talib.MACD(df['close'], fastperiod=12, slowperiod=26, signalperiod=9)
-    df['macd'] = macd
-    df['macdsignal'] = macdsignal
-    df['ema'] = talib.EMA(df['close'], timeperiod=20)
-    upper, middle, lower = talib.BBANDS(df['close'], timeperiod=20)
-    df['bb_upper'] = upper
-    df['bb_lower'] = lower
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['rsi'] = 100 - (100 / (1 + rs))
+
+    exp1 = df['close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['close'].ewm(span=26, adjust=False).mean()
+    df['macd'] = exp1 - exp2
+    df['macdsignal'] = df['macd'].ewm(span=9, adjust=False).mean()
+
+    df['ema'] = df['close'].ewm(span=20, adjust=False).mean()
+
+    df['bb_upper'] = df['close'].rolling(window=20).mean() + 2 * df['close'].rolling(window=20).std()
+    df['bb_lower'] = df['close'].rolling(window=20).mean() - 2 * df['close'].rolling(window=20).std()
+
     return df
 
 # Enregistrer un trade dans le log CSV
@@ -157,7 +166,6 @@ def run():
                 logging.error(f"Erreur achat: {e}")
                 send_telegram_message(f"❌ Erreur: {e}")
     else:
-        # Trailing Stop Logic
         if last_price > highest_price:
             highest_price = last_price
             logging.info(f"📈 Nouveau plus haut atteint: {highest_price:.2f}")
@@ -171,7 +179,6 @@ def run():
                 send_telegram_message(f"🔽 Vente Trailing Stop à {last_price:.2f} USDT")
                 log_trade("SELL-TRAIL", last_price, amount_qty, highest_price, trailing_sl)
 
-        # Stop Loss classique
         stop_loss_price = round(entry_price * (1 - stop_loss_percent), 2)
         if last_price <= stop_loss_price:
             active_position = False
@@ -179,7 +186,6 @@ def run():
             send_telegram_message(f"🚨 SL déclenché à {last_price:.2f} USDT.")
             log_trade("SELL-SL", last_price, amount_qty, highest_price, stop_loss_price)
 
-        # Take Profit simple
         take_profit_price = round(entry_price * (1 + profit_target), 2)
         if last_price >= take_profit_price:
             active_position = False
@@ -191,4 +197,3 @@ if __name__ == "__main__":
     while True:
         run()
         time.sleep(300)
-
