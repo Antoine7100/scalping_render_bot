@@ -19,13 +19,13 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
 TELEGRAM_CHAT_ID = "1440739670"
 
-# Initialiser Bybit
+# Initialiser Bybit en Unified Trading
 exchange = ccxt.bybit({
     'apiKey': api_key,
     'secret': api_secret,
     'enableRateLimit': True,
     'options': {
-        'defaultType': 'future'
+        'defaultType': 'unified'
     }
 })
 
@@ -70,7 +70,6 @@ def get_ohlcv():
     return df
 
 # RSI, MACD, EMA, Bollinger
-
 def get_indicators(df):
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -137,8 +136,19 @@ def run():
 
     show_chart(df, fibs, last_price)
 
-    amount_usdt = 20
-    amount_qty = round(amount_usdt / last_price, 5)
+    try:
+        balance = exchange.fetch_balance()
+        available_usdt = balance['total']['USDT']
+        logging.info(f"Solde disponible: {available_usdt:.2f} USDT")
+    except Exception as e:
+        logging.error(f"Erreur récupération solde: {e}")
+        return
+
+    if available_usdt < 5:
+        logging.warning("Solde insuffisant pour trader.")
+        return
+
+    amount_qty = round(available_usdt / last_price, 5)
 
     if not active_position:
         buy_signal = (
