@@ -32,7 +32,7 @@ exchange = ccxt.bybit({
 })
 
 symbol = "BTC/USDT:USDT"
-leverage = 5
+leverage = 2  # Levier réduit à 2
 
 try:
     exchange.set_leverage(leverage, symbol)
@@ -174,6 +174,7 @@ def show_chart(df, fibs, price):
     plt.tight_layout()
     plt.savefig("fibonacci_chart.png")
     logging.info("📊 Graphique sauvegardé : fibonacci_chart.png")
+
 
 # Fonction principale
 
