@@ -32,7 +32,7 @@ exchange = ccxt.bybit({
 })
 
 symbol = "ADA/USDT:USDT"  # Nouvelle paire ADA/USDT
-leverage = 2  # Levier réduit à 2
+leverage = 3  # Levier augmenté à 3
 
 try:
     exchange.set_leverage(leverage, symbol)
