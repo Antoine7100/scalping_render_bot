@@ -3,3 +3,4 @@ python-dotenv
 pandas
 requests
 matplotlib
+ta-lib
