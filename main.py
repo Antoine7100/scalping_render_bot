@@ -17,7 +17,7 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 
 # Clés Telegram
 TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
-TELEGRAM_CHAT_ID = "123456789"  # Remplace par ton vrai chat_id
+TELEGRAM_CHAT_ID = "1440739670"
 
 # Initialiser Bybit
 exchange = ccxt.bybit({
@@ -195,3 +195,4 @@ if __name__ == "__main__":
     while True:
         run()
         time.sleep(30)
+
