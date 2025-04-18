@@ -193,6 +193,10 @@ def run():
 
 if __name__ == "__main__":
     while True:
-        run()
+        try:
+            run()
+        except Exception as e:
+            logging.error(f"💥 Erreur fatale dans la boucle : {e}")
+            send_telegram_message(f"❌ Le bot a planté : {e}")
         time.sleep(30)
 
