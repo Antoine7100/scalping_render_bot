@@ -31,7 +31,7 @@ exchange = ccxt.bybit({
     }
 })
 
-symbol = "BTC/USDT:USDT"
+symbol = "ADA/USDT:USDT"  # Nouvelle paire ADA/USDT
 leverage = 2  # Levier réduit à 2
 
 try:
@@ -167,7 +167,7 @@ def show_chart(df, fibs, price):
     plt.plot(df['timestamp'], df['ema'], label='EMA 20', linestyle='--')
     for level, p in fibs.items():
         plt.axhline(y=p, color='gray', linestyle='--', label=f'Fibo {level}')
-    plt.title(f"BTC/USDT avec indicateurs (Prix actuel: {price:.2f})")
+    plt.title(f"ADA/USDT avec indicateurs (Prix actuel: {price:.4f})")
     plt.xlabel("Temps")
     plt.ylabel("Prix (USDT)")
     plt.legend()
