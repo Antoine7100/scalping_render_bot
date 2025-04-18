@@ -15,7 +15,7 @@ api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
 # Clés Telegram (ajoutées manuellement ici pour test)
-TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSH0YlfvfxI5uWbC19bgz0XJx6oCQ"
+TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
 TELEGRAM_CHAT_ID = "123456789"  # Remplace par ton vrai chat_id
 
 # Initialiser Bybit
