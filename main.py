@@ -8,7 +8,7 @@ from datetime import datetime
 import requests
 import numpy as np
 from flask import Flask, jsonify
-from threading import Thread
+import threading
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -99,11 +99,6 @@ def daily_pnl():
     buys = today_trades[today_trades['action'].str.startswith("BUY")]['price'] * today_trades[today_trades['action'].str.startswith("BUY")]['qty']
     sells = today_trades[today_trades['action'].str.startswith("SELL")]['price'] * today_trades[today_trades['action'].str.startswith("SELL")]['qty']
     return round(sells.sum() - buys.sum(), 2)
-
-def start_flask():
-    app.run(host="0.0.0.0", port=5000)
-
-Thread(target=start_flask).start()
 
 # Fonction pour envoyer un message Telegram
 def send_telegram_message(msg):
@@ -267,6 +262,9 @@ def run():
             log_trade("SELL-TP", last_price, amount_qty, take_profit_price, stop_loss_price)
 
 if __name__ == "__main__":
+    flask_thread = threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": int(os.environ.get("PORT", 5000))})
+    flask_thread.start()
+
     while True:
         try:
             run()
@@ -274,3 +272,4 @@ if __name__ == "__main__":
             logging.error(f"💥 Erreur fatale dans la boucle : {e}")
             send_telegram_message(f"❌ Le bot a planté : {e}")
         time.sleep(30)
+
