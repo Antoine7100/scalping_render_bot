@@ -158,6 +158,7 @@ def log_trade(action, price, qty, tp, sl):
         df.to_csv(log_file, mode='a', header=False, index=False)
     else:
         df.to_csv(log_file, mode='w', header=True, index=False)
+    send_telegram_message(f"📝 Trade enregistré : {action} à {price} USDT, quantité: {qty}")
 
 # Graphique avec Fibonacci + annotations
 def show_chart(df, fibs, price):
@@ -173,7 +174,9 @@ def show_chart(df, fibs, price):
     plt.grid(True)
     plt.tight_layout()
     plt.savefig("fibonacci_chart.png")
+    plt.close()
     logging.info("📊 Graphique sauvegardé : fibonacci_chart.png")
+
 
 
 # Fonction principale
