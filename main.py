@@ -17,7 +17,7 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 
 # Clés Telegram
 TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
-TELEGRAM_CHAT_ID = "123456789"  
+TELEGRAM_CHAT_ID = "123456789"  # Remplace par ton vrai chat_id
 
 # Initialiser Bybit
 exchange = ccxt.bybit({
@@ -30,13 +30,13 @@ exchange = ccxt.bybit({
 })
 
 symbol = "BTC/USDT"
-timeframe = '1h'
+timeframe = '1m'
 limit = 100
 risk_percent = 0.02
-profit_target = 0.08
-stop_loss_percent = 0.015
-trailing_stop_trigger = 0.03
-trailing_stop_distance = 0.01
+profit_target = 0.05
+stop_loss_percent = 0.01
+trailing_stop_trigger = 0.015
+trailing_stop_distance = 0.007
 log_file = "trades_log.csv"
 active_position = False
 entry_price = 0.0
@@ -142,10 +142,8 @@ def run():
 
     if not active_position:
         buy_signal = (
-            (last_price <= fibs['0.618'] or last_price <= bb_lower) and
-            rsi < 50 and
-            macd > macdsignal and
-            last_price > ema
+            rsi < 60 and
+            macd > macdsignal
         )
         if buy_signal:
             try:
@@ -196,4 +194,4 @@ def run():
 if __name__ == "__main__":
     while True:
         run()
-        time.sleep(300)
+        time.sleep(30)
