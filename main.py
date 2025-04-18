@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import requests
 import numpy as np
+from flask import Flask, jsonify
+from threading import Thread
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -19,17 +21,20 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
 TELEGRAM_CHAT_ID = "1440739670"
 
-# Initialiser Bybit en Unified Trading
+# Initialiser Bybit en Perp
 exchange = ccxt.bybit({
     'apiKey': api_key,
     'secret': api_secret,
     'enableRateLimit': True,
     'options': {
-        'defaultType': 'unified'
+        'defaultType': 'future'
     }
 })
 
-symbol = "BTC/USDT"
+symbol = "BTC/USDT:USDT"
+leverage = 5
+exchange.set_leverage(leverage, symbol)
+
 timeframe = '1m'
 limit = 100
 risk_percent = 0.02
@@ -38,9 +43,29 @@ stop_loss_percent = 0.01
 trailing_stop_trigger = 0.015
 trailing_stop_distance = 0.007
 log_file = "trades_log.csv"
+
+# Variables d'état
 active_position = False
 entry_price = 0.0
 highest_price = 0.0
+last_order_info = {}
+
+# Web interface
+app = Flask(__name__)
+
+@app.route("/status")
+def status():
+    return jsonify({
+        "active_position": active_position,
+        "entry_price": entry_price,
+        "highest_price": highest_price,
+        "last_order": last_order_info
+    })
+
+def start_flask():
+    app.run(host="0.0.0.0", port=5000)
+
+Thread(target=start_flask).start()
 
 # Fonction pour envoyer un message Telegram
 def send_telegram_message(msg):
@@ -115,7 +140,7 @@ def show_chart(df, fibs, price):
 
 # Fonction principale
 def run():
-    global active_position, entry_price, highest_price
+    global active_position, entry_price, highest_price, last_order_info
     df = get_ohlcv()
     df = get_indicators(df)
 
@@ -144,11 +169,12 @@ def run():
         logging.error(f"Erreur récupération solde: {e}")
         return
 
-    if available_usdt < 5:
+    if available_usdt < 1:
         logging.warning("Solde insuffisant pour trader.")
         return
 
-    amount_qty = round(available_usdt / last_price, 5)
+    position_size = available_usdt * leverage
+    amount_qty = round(position_size / last_price, 5)
 
     if not active_position:
         buy_signal = (
@@ -162,6 +188,7 @@ def run():
                 entry_price = last_price
                 highest_price = last_price
                 active_position = True
+                last_order_info = order
 
                 tp = round(entry_price * (1 + profit_target), 2)
                 sl = round(entry_price * (1 - stop_loss_percent), 2)
