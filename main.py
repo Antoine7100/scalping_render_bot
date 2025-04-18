@@ -33,7 +33,11 @@ exchange = ccxt.bybit({
 
 symbol = "BTC/USDT:USDT"
 leverage = 5
-exchange.set_leverage(leverage, symbol)
+
+try:
+    exchange.set_leverage(leverage, symbol)
+except Exception as e:
+    logging.warning(f"⚠️ Impossible de définir le levier : {e}")
 
 timeframe = '1m'
 limit = 100
@@ -172,6 +176,7 @@ def show_chart(df, fibs, price):
     logging.info("📊 Graphique sauvegardé : fibonacci_chart.png")
 
 # Fonction principale
+
 def run():
     global active_position, entry_price, highest_price, last_order_info
     df = get_ohlcv()
