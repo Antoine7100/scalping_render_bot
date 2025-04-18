@@ -53,6 +53,10 @@ last_order_info = {}
 # Web interface
 app = Flask(__name__)
 
+@app.route("/")
+def index():
+    return "<h2>Bienvenue sur le bot de trading Bybit. Accédez à <a href='/trades'>/trades</a> pour voir les trades du jour.</h2>"
+
 @app.route("/status")
 def status():
     return jsonify({
@@ -61,6 +65,40 @@ def status():
         "highest_price": highest_price,
         "last_order": last_order_info
     })
+
+@app.route("/trades")
+def trades():
+    if not os.path.exists(log_file):
+        return "<h2>Aucun trade enregistré.</h2>"
+
+    df = pd.read_csv(log_file)
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    today = datetime.now().date()
+    today_trades = df[df['datetime'].dt.date == today]
+
+    if today_trades.empty:
+        return "<h2>Aucun trade exécuté aujourd'hui.</h2>"
+
+    pnl = daily_pnl()
+    html = f"<h1>📄 Trades du jour</h1><h3>📈 PNL du jour : {pnl} USDT</h3><table border='1' cellpadding='5'>"
+    html += "<tr><th>Heure</th><th>Action</th><th>Prix</th><th>Quantité</th><th>TP</th><th>SL</th></tr>"
+
+    for _, row in today_trades.iterrows():
+        html += f"<tr><td>{row['datetime']}</td><td>{row['action']}</td><td>{row['price']}</td><td>{row['qty']}</td><td>{row['take_profit']}</td><td>{row['stop_loss']}</td></tr>"
+
+    html += "</table>"
+    return html
+
+def daily_pnl():
+    if not os.path.exists(log_file):
+        return 0
+    df = pd.read_csv(log_file)
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    today = datetime.now().date()
+    today_trades = df[df['datetime'].dt.date == today]
+    buys = today_trades[today_trades['action'].str.startswith("BUY")]['price'] * today_trades[today_trades['action'].str.startswith("BUY")]['qty']
+    sells = today_trades[today_trades['action'].str.startswith("SELL")]['price'] * today_trades[today_trades['action'].str.startswith("SELL")]['qty']
+    return round(sells.sum() - buys.sum(), 2)
 
 def start_flask():
     app.run(host="0.0.0.0", port=5000)
@@ -236,4 +274,3 @@ if __name__ == "__main__":
             logging.error(f"💥 Erreur fatale dans la boucle : {e}")
             send_telegram_message(f"❌ Le bot a planté : {e}")
         time.sleep(30)
-
