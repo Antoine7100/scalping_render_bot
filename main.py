@@ -219,9 +219,8 @@ def run():
     max(round(position_size / last_price, 2), 1.0)
 
     if not active_position:
-    buy_signal = (
-        rsi < 65 and macd > macdsignal
-    )
+    buy_signal = (rsi < 65 and macd > macdsignal)
+    
     if buy_signal:
         try:
             balance = exchange.fetch_balance()
