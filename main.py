@@ -218,7 +218,7 @@ def run():
     position_size = available_usdt * leverage
     max(round(position_size / last_price, 2), 1.0)
 
-    if not active_position:
+if not active_position:
     buy_signal = (
         rsi < 65 and macd > macdsignal
     )
@@ -228,7 +228,7 @@ def run():
             balance = exchange.fetch_balance()
             available_usdt = balance['total']['USDT']
             position_size = available_usdt * leverage
-            amount_qty = max(round(position_size / last_price, 2), 1.0)  # Quantité sécurisée
+            amount_qty = max(round(position_size / last_price, 2), 1.0)  # Quantité sécurisée minimum 1 ADA
 
             order = exchange.create_market_buy_order(symbol, amount_qty)
             logging.info(f"💵 Achat exécuté: {order['amount']} {symbol} à {last_price:.4f}")
@@ -243,6 +243,9 @@ def run():
             send_telegram_message(f"✅ Achat: {amount_qty} {symbol} à {entry_price} USDT\n🎯 TP: {tp} | 🛑 SL: {sl}")
             log_trade("BUY", entry_price, amount_qty, tp, sl)
 
+        except Exception as e:
+            logging.error(f"Erreur achat: {e}")
+            send_telegram_message(f"❌ Erreur: {e}")
         except Exception as e:
             logging.error(f"Erreur achat: {e}")
             send_telegram_message(f"❌ Erreur: {e}")
