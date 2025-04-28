@@ -219,29 +219,32 @@ def run():
     max(round(position_size / last_price, 2), 1.0)
 
     if not active_position:
-        buy_signal = (
-            rsi < 60 and
-            macd > macdsignal
-        )
-        if buy_signal:
-            try:
-                order = exchange.create_market_buy_order(symbol, amount_qty)
-                logging.info(f"💵 Achat exécuté: {order['amount']} {symbol} à {last_price:.2f}")
-                entry_price = last_price
-                highest_price = last_price
-                active_position = True
-                last_order_info = order
+    buy_signal = (
+        rsi < 65 and macd > macdsignal
+    )
+    if buy_signal:
+        try:
+            balance = exchange.fetch_balance()
+            available_usdt = balance['total']['USDT']
+            position_size = available_usdt * leverage
+            amount_qty = max(round(position_size / last_price, 2), 1.0)  # Calcul sécurisé ici ✅
 
-                tp = round(entry_price * (1 + profit_target), 2)
-                sl = round(entry_price * (1 - stop_loss_percent), 2)
+            order = exchange.create_market_buy_order(symbol, amount_qty)
+            logging.info(f"💵 Achat exécuté: {order['amount']} {symbol} à {last_price:.4f}")
+            entry_price = last_price
+            highest_price = last_price
+            active_position = True
+            last_order_info = order
 
-                logging.info(f"🎯 TP: {tp} | 🛑 SL: {sl}")
-                send_telegram_message(f"✅ Achat: {amount_qty} BTC à {entry_price} USDT\n🎯 TP: {tp} | 🛑 SL: {sl}")
-                log_trade("BUY", entry_price, amount_qty, tp, sl)
+            tp = round(entry_price * (1 + profit_target), 4)
+            sl = round(entry_price * (1 - stop_loss_percent), 4)
 
-            except Exception as e:
-                logging.error(f"Erreur achat: {e}")
-                send_telegram_message(f"❌ Erreur: {e}")
+            send_telegram_message(f"✅ Achat: {amount_qty} {symbol} à {entry_price} USDT\n🎯 TP: {tp} | 🛑 SL: {sl}")
+            log_trade("BUY", entry_price, amount_qty, tp, sl)
+
+        except Exception as e:
+            logging.error(f"Erreur achat: {e}")
+            send_telegram_message(f"❌ Erreur achat : {e}")
     else:
         if last_price > highest_price:
             highest_price = last_price
