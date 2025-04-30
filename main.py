@@ -110,6 +110,7 @@ def log_trade(action, price, qty, tp, sl):
 def run():
     global active_position, entry_price, highest_price, last_order_info
 
+    logging.info("➡️ Le bot est en cours d'exécution...")
     df = get_ohlcv()
     df = get_indicators(df)
     last_price = df['close'].iloc[-1]
@@ -118,29 +119,42 @@ def run():
     macdsignal = df['macdsignal'].iloc[-1]
 
     if not active_position:
-        buy_signal = rsi < 65 and macd > macdsignal
+        buy_signal = (rsi < 65 and macd > macdsignal) or force_buy_test
         if buy_signal:
             try:
                 balance = exchange.fetch_balance()
                 available_usdt = balance['total']['USDT']
-                if available_usdt < 1:
-                    logging.warning("Solde insuffisant pour trade.")
+
+                if available_usdt < 5:
+                    logging.warning("❌ Solde insuffisant (<5 USDT), achat annulé.")
+                    send_telegram_message("⚠️ Solde insuffisant pour trader (moins de 5 USDT).")
                     return
+
                 position_size = available_usdt * leverage
                 amount_qty = round(position_size / last_price, 2)
+
+                logging.info(f"Tentative d'achat → solde: {available_usdt:.2f} USDT | levier: x{leverage} | position: {position_size:.2f} | prix: {last_price:.4f} | qty: {amount_qty}")
+
+                # Décommente pour tester avec un trade d’1 ADA
+                # amount_qty = 1
+
                 order = exchange.create_market_buy_order(symbol, amount_qty)
                 logging.info(f"✅ Achat: {order['amount']} {symbol} à {last_price:.4f}")
+
                 entry_price = last_price
                 highest_price = last_price
                 active_position = True
                 last_order_info = order
+
                 tp = round(entry_price * (1 + profit_target), 4)
                 sl = round(entry_price * (1 - stop_loss_percent), 4)
+
                 send_telegram_message(f"💰 Achat: {amount_qty} à {entry_price} USDT | TP: {tp} | SL: {sl}")
                 log_trade("BUY", entry_price, amount_qty, tp, sl)
+
             except Exception as e:
                 logging.error(f"Erreur achat: {e}")
-                send_telegram_message(f"❌ Erreur: {e}")
+                send_telegram_message(f"❌ Erreur achat: {e}")
 
 threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
 
