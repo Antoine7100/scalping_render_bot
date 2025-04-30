@@ -110,7 +110,7 @@ def log_trade(action, price, qty, tp, sl):
 def run():
     global active_position, entry_price, highest_price, last_order_info
 
-    logging.info("➡️ Le bot est en cours d'exécution...")
+    logging.info("🔥 Bot agressif en cours...")
 
     df = get_ohlcv()
     df = get_indicators(df)
@@ -120,40 +120,79 @@ def run():
     macdsignal = df['macdsignal'].iloc[-1]
 
     if not active_position:
-        buy_signal = (rsi < 65 and macd > macdsignal) or force_buy_test
+        buy_signal = macd > macdsignal and rsi < 75
+
         if buy_signal:
             try:
                 balance = exchange.fetch_balance()
                 available_usdt = balance['total']['USDT']
-                logging.info(f"💵 Solde total disponible (USDT) : {available_usdt:.2f}")
+                logging.info(f"💵 Solde dispo : {available_usdt:.2f} USDT")
 
                 if available_usdt < 5:
-                    logging.warning("❌ Solde trop faible pour trade (moins de 5 USDT).")
-                    send_telegram_message("⚠️ Solde insuffisant pour trader (moins de 5 USDT).")
+                    logging.warning("❌ Pas assez de solde.")
+                    send_telegram_message("⚠️ Pas assez de solde pour trader.")
                     return
 
-                # Forcer un test d'achat d'1 ADA
-                amount_qty = 1
-                logging.info(f"🧪 Achat test forcé : {amount_qty} ADA à {last_price:.4f}")
+                position_size = available_usdt * leverage
+                amount_qty = round(position_size / last_price, 2)
 
                 order = exchange.create_market_buy_order(symbol, amount_qty)
 
-                logging.info(f"✅ Achat effectué : {order['amount']} {symbol} à {last_price:.4f}")
+                logging.info(f"✅ Achat agressif : {amount_qty} {symbol} à {last_price:.4f}")
 
                 entry_price = last_price
                 highest_price = last_price
                 active_position = True
-                last_order_info = order
+                last_order_info = {
+                    "amount": amount_qty,
+                    "entry_price": entry_price
+                }
 
-                tp = round(entry_price * (1 + profit_target), 4)
-                sl = round(entry_price * (1 - stop_loss_percent), 4)
+                tp = round(entry_price * 1.02, 4)
+                sl = round(entry_price * 0.985, 4)
 
-                send_telegram_message(f"💰 Achat: {amount_qty} à {entry_price} USDT | TP: {tp} | SL: {sl}")
+                send_telegram_message(f"🚀 Achat agressif : {amount_qty} ADA à {entry_price} | TP : {tp} | SL : {sl}")
                 log_trade("BUY", entry_price, amount_qty, tp, sl)
 
             except Exception as e:
-                logging.error(f"❌ Erreur achat: {e}")
-                send_telegram_message(f"❌ Erreur achat: {e}")
+                logging.error(f"❌ Erreur achat : {e}")
+                send_telegram_message(f"❌ Erreur achat : {e}")
+
+    else:
+        current_price = df['close'].iloc[-1]
+        highest_price = max(highest_price, current_price)
+
+        tp = entry_price * 1.02
+        sl = entry_price * 0.985
+        trailing_trigger = entry_price * 1.015
+        trailing_sl = highest_price * 0.993
+
+        logging.info(f"📊 Suivi position : entrée {entry_price:.4f} | actuel {current_price:.4f} | haut {highest_price:.4f}")
+
+        amount_qty = last_order_info.get("amount", 0)
+
+        try:
+            if current_price >= tp:
+                exchange.create_market_sell_order(symbol, amount_qty)
+                send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée.")
+                log_trade("SELL_TP", current_price, amount_qty, "-", "-")
+                active_position = False
+
+            elif current_price <= sl:
+                exchange.create_market_sell_order(symbol, amount_qty)
+                send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée.")
+                log_trade("SELL_SL", current_price, amount_qty, "-", "-")
+                active_position = False
+
+            elif current_price > trailing_trigger and current_price <= trailing_sl:
+                exchange.create_market_sell_order(symbol, amount_qty)
+                send_telegram_message(f"🔁 Trailing SL déclenché à {current_price:.4f} 🛑 Position clôturée.")
+                log_trade("SELL_TRAIL", current_price, amount_qty, "-", "-")
+                active_position = False
+
+        except Exception as e:
+            logging.error(f"❌ Erreur de vente : {e}")
+            send_telegram_message(f"❌ Erreur lors de la vente : {e}")
 
 threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
 
