@@ -160,7 +160,7 @@ def run():
             return
 
         position_size = available_usdt * leverage
-        amount_qty = max(round(position_size / last_price, 2), 1.0)
+        amount_qty = max(round(position_size / last_price, 2), 10.0)
 
         if not active_position:
             buy_signal = (rsi < 65 and last_price > ema)
