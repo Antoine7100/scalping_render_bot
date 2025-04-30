@@ -380,4 +380,3 @@ while True:
             logging.error(f"Crash: {e}")
             send_telegram_message(f"❌ Crash: {e}")
     time.sleep(30)
-
