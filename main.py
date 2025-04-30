@@ -165,6 +165,8 @@ def status_bot(update, context):
     else:
         send_telegram_message("⛔ Bot en pause.")
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 def start_telegram_bot():
     updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
@@ -172,10 +174,90 @@ def start_telegram_bot():
     dp.add_handler(CommandHandler("startbot", start_bot))
     dp.add_handler(CommandHandler("stopbot", stop_bot))
     dp.add_handler(CommandHandler("status", status_bot))
+    dp.add_handler(CommandHandler("menu", menu))
+    dp.add_handler(CommandHandler("stats", stats))
     updater.start_polling()
 
 # Thread Flask
 threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
+@restricted
+def stats(update, context):
+    if not os.path.exists(log_file):
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Aucun trade enregistré.")
+        return
+
+    df = pd.read_csv(log_file)
+    df['price'] = pd.to_numeric(df['price'], errors='coerce')
+    df['qty'] = pd.to_numeric(df['qty'], errors='coerce')
+
+    pnl = 0
+    last_buy_price = None
+    for _, row in df.iterrows():
+        if row['action'] == 'BUY':
+            last_buy_price = row['price']
+        elif row['action'] in ['SELL_TP', 'SELL_SL', 'SELL_TRAIL', 'FORCE_SELL'] and last_buy_price:
+            pnl += (row['price'] - last_buy_price) * row['qty']
+
+    pnl = round(pnl, 4)
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"💰 Gain total estimé : {pnl} USDT")
+
+@restricted
+def menu(update, context):
+    keyboard = [
+        [InlineKeyboardButton("▶️ Lancer le bot", callback_data='startbot'),
+         InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
+        [InlineKeyboardButton("📊 Statut", callback_data='status'),
+         InlineKeyboardButton("❌ Fermer la position", callback_data='close')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot.send_message(chat_id=update.effective_chat.id, text="📋 Menu de contrôle :", reply_markup=reply_markup)
+
+def handle_button(update, context):
+    query = update.callback_query
+    query.answer()
+    command = query.data
+    fake_update = update
+    fake_update.effective_user = update.effective_user
+    fake_update.effective_chat = update.effective_chat
+
+    if command == 'startbot':
+        start_bot(fake_update, context)
+    elif command == 'stopbot':
+        stop_bot(fake_update, context)
+    elif command == 'status':
+        status_bot(fake_update, context)
+    elif command == 'close':
+        force_sell(fake_update, context)
+
+dp.add_handler(telegram.ext.CallbackQueryHandler(handle_button))
+
+import schedule
+import threading
+
+# Rapport quotidien automatique
+@restricted
+def daily_summary():
+    if not os.path.exists(log_file):
+        return
+
+    df = pd.read_csv(log_file)
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    today = datetime.now().date()
+    today_df = df[df['datetime'].dt.date == today]
+
+    pnl = 0
+    last_buy_price = None
+    for _, row in today_df.iterrows():
+        if row['action'] == 'BUY':
+            last_buy_price = row['price']
+        elif row['action'] in ['SELL_TP', 'SELL_SL', 'SELL_TRAIL', 'FORCE_SELL'] and last_buy_price:
+            pnl += (row['price'] - last_buy_price) * row['qty']
+
+    pnl = round(pnl, 4)
+    send_telegram_message(f"🗓 Résumé du jour : Gain estimé = {pnl} USDT")
+
+schedule.every().day.at("23:59").do(daily_summary)
+
 # Thread Telegram
 threading.Thread(target=start_telegram_bot).start()
 
@@ -283,6 +365,13 @@ MACD: {macd:.4f} > Signal: {macdsignal:.4f}, RSI: {rsi:.2f}, EMA20 > EMA50"
             send_telegram_message(f"❌ Erreur vente : {e}")
 
 # Boucle principale continue
+def scheduler_loop():
+    while True:
+        schedule.run_pending()
+        time.sleep(10)
+
+threading.Thread(target=scheduler_loop).start()
+
 while True:
     if bot_running:
         try:
@@ -291,4 +380,5 @@ while True:
             logging.error(f"Crash: {e}")
             send_telegram_message(f"❌ Crash: {e}")
     time.sleep(30)
+
 
