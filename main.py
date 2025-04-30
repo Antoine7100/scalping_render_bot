@@ -328,7 +328,8 @@ def run():
 
                 send_telegram_message(
     f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}
-MACD: {macd:.4f} > Signal: {macdsignal:.4f}, RSI: {rsi:.2f}, EMA20 > EMA50"
+"
+    f"MACD: {macd:.4f} > Signal: {macdsignal:.4f}, RSI: {rsi:.2f}, EMA20 > EMA50"
 )
                 log_trade("BUY", entry_price, amount_qty, tp, sl)
             except Exception as e:
