@@ -194,8 +194,7 @@ def run():
             logging.error(f"❌ Erreur vente : {e}")
             send_telegram_message(f"❌ Erreur lors de la vente : {e}")
 
-
-    else:
+        
         current_price = df['close'].iloc[-1]
         highest_price = max(highest_price, current_price)
 
