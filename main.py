@@ -1,3 +1,5 @@
+# COLLER CE CODE DANS main.py
+
 import ccxt
 import os
 import pandas as pd
@@ -10,25 +12,19 @@ import numpy as np
 from flask import Flask, jsonify
 import threading
 
-# Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# Clés API
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
-# Clés Telegram
 TELEGRAM_BOT_TOKEN = "7558300482:AAGu9LaSHOYlfvfxI5uWbC19bgzOXJx6oCQ"
 TELEGRAM_CHAT_ID = "1440739670"
 
-# Initialiser Bybit en Perp
 exchange = ccxt.bybit({
     'apiKey': api_key,
     'secret': api_secret,
     'enableRateLimit': True,
-    'options': {
-        'defaultType': 'future'
-    }
+    'options': {'defaultType': 'future'}
 })
 
 symbol = "ADA/USDT:USDT"
@@ -37,7 +33,7 @@ leverage = 3
 try:
     exchange.set_leverage(leverage, symbol)
 except Exception as e:
-    logging.warning(f"⚠️ Impossible de définir le levier : {e}")
+    logging.warning(f"⚠️ Levier non modifié : {e}")
 
 timeframe = '1m'
 limit = 100
@@ -107,7 +103,7 @@ def log_trade(action, price, qty, tp, sl):
         df.to_csv(log_file, mode='a', header=False, index=False)
     else:
         df.to_csv(log_file, mode='w', header=True, index=False)
-    send_telegram_message(f"📝 Trade enregistré : {action} à {price} USDT, quantité: {qty}")
+    send_telegram_message(f"📝 Trade : {action} à {price} USDT | Qté: {qty}")
 
 def run():
     global active_position, entry_price, highest_price, last_order_info
@@ -126,23 +122,23 @@ def run():
                 balance = exchange.fetch_balance()
                 available_usdt = balance['total']['USDT']
                 if available_usdt < 1:
-                    logging.warning("Solde insuffisant pour trade.")
+                    logging.warning("❌ Solde insuffisant.")
                     return
                 position_size = available_usdt * leverage
                 amount_qty = max(round(position_size / last_price, 2), 1.0)
                 order = exchange.create_market_buy_order(symbol, amount_qty)
-                logging.info(f"✅ Achat: {order['amount']} {symbol} à {last_price:.4f}")
+                logging.info(f"✅ Achat exécuté: {order['amount']} à {last_price}")
                 entry_price = last_price
                 highest_price = last_price
                 active_position = True
                 last_order_info = order
                 tp = round(entry_price * (1 + profit_target), 4)
                 sl = round(entry_price * (1 - stop_loss_percent), 4)
-                send_telegram_message(f"💰 Achat: {amount_qty} à {entry_price} USDT | TP: {tp} | SL: {sl}")
+                send_telegram_message(f"✅ Achat: {amount_qty} ADA à {entry_price} USDT\n🎯 TP: {tp} | 🛑 SL: {sl}")
                 log_trade("BUY", entry_price, amount_qty, tp, sl)
             except Exception as e:
                 logging.error(f"Erreur achat: {e}")
-                send_telegram_message(f"❌ Erreur: {e}")
+                send_telegram_message(f"❌ Erreur : {e}")
 
 threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
 
@@ -150,8 +146,8 @@ while True:
     try:
         run()
     except Exception as e:
-        logging.error(f"💥 Crash: {e}")
-        send_telegram_message(f"❌ Crash: {e}")
+        logging.error(f"💥 Erreur : {e}")
+        send_telegram_message(f"💥 Crash : {e}")
     time.sleep(30)
 
 
