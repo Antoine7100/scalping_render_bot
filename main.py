@@ -196,8 +196,8 @@ async def launch_telegram_bot():
                             try:
                                 exchange.create_market_buy_order(symbol, qty)
                             except Exception as e:
-                                await send_telegram_message(app, f"❌ Erreur Bybit : {e}
-Montant calculé : {qty} ADA à {price:.4f} USDT")
+await send_telegram_message(app, f"❌ Erreur Bybit : {e}\\nMontant calculé : {qty} ADA à {price:.4f} USDT")
+
                                 is_processing = False
                                 continue
                             entry_price = price
