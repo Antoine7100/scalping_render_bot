@@ -11,6 +11,7 @@ import threading
 import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
+import schedule
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -48,7 +49,16 @@ active_position = False
 entry_price = 0.0
 highest_price = 0.0
 last_order_info = {}
+def notify_last_trade():
+    if not os.path.exists(log_file):
+        return
+    df = pd.read_csv(log_file)
+    last = df.tail(1).iloc[0]
+    msg = f"📈 Trade clôturé:
+{last['datetime']} | {last['action']} à {last['price']} USDT"
+    send_telegram_message(msg)
 bot_running = True
+bot_lock = threading.Lock()
 
 trade_count = 0
 trade_wins = 0
@@ -116,6 +126,26 @@ def send_telegram_message(msg):
     except Exception as e:
         logging.error(f"Erreur Telegram : {e}")
 
+def start_telegram_bot_once():
+    if bot_lock.locked():
+        logging.warning("Le bot Telegram est déjà en cours d'exécution.")
+        return
+
+    with bot_lock:
+        updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+        dp = updater.dispatcher
+        dp.add_handler(CommandHandler("close", force_sell))
+        dp.add_handler(CommandHandler("startbot", start_bot))
+        dp.add_handler(CommandHandler("stopbot", stop_bot))
+        dp.add_handler(CommandHandler("status", status_bot))
+        dp.add_handler(CommandHandler("menu", menu))
+        dp.add_handler(CallbackQueryHandler(handle_button))
+        dp.add_handler(CommandHandler("lasttrades", last_trades))
+        updater.start_polling()
+
+threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
+threading.Thread(target=start_telegram_bot_once).start()
+
 def restricted(func):
     def wrapper(update, context):
         if update.effective_user.id != TELEGRAM_USER_ID:
@@ -127,7 +157,6 @@ def restricted(func):
 @restricted
 def force_sell(update, context):
     global active_position, last_order_info
-
     if active_position:
         try:
             qty = last_order_info.get("amount", 0)
@@ -182,53 +211,21 @@ def handle_button(update, context):
         status_bot(update, context)
     elif command == 'close':
         force_sell(update, context)
-
-def start_telegram_bot():
-    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("close", force_sell))
-    dp.add_handler(CommandHandler("startbot", start_bot))
-    dp.add_handler(CommandHandler("stopbot", stop_bot))
-    dp.add_handler(CommandHandler("status", status_bot))
-    dp.add_handler(CommandHandler("menu", menu))
-    dp.add_handler(CallbackQueryHandler(handle_button))
-    updater.start_polling()
-
-threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
-threading.Thread(target=start_telegram_bot).start()
-
-
-# Résumé quotidien des performances
-import schedule
-
-def daily_summary():
+@restricted
+def last_trades(update, context):
     if not os.path.exists(log_file):
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Aucun trade enregistré.")
         return
+
     df = pd.read_csv(log_file)
-    df['datetime'] = pd.to_datetime(df['datetime'])
-    today = datetime.now().date()
-    today_df = df[df['datetime'].dt.date == today]
+    df = df.tail(5)
+    message = "🧾 Derniers trades:
+"
+    for _, row in df.iterrows():
+        message += f"{row['datetime']} | {row['action']} à {row['price']} USDT
+"
 
-    pnl = 0
-    last_buy_price = None
-    for _, row in today_df.iterrows():
-        if row['action'] == 'BUY':
-            last_buy_price = row['price']
-        elif row['action'].startswith('SELL') and last_buy_price:
-            pnl += (row['price'] - last_buy_price) * row['qty']
-
-    pnl = round(pnl, 4)
-    send_telegram_message(f"📊 Résumé du jour : Gain estimé = {pnl} USDT")
-
-schedule.every().day.at("23:59").do(daily_summary)
-
-def scheduler_loop():
-    while True:
-        schedule.run_pending()
-        time.sleep(10)
-
-threading.Thread(target=scheduler_loop).start()
-
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 def get_indicators(df):
     delta = df['close'].diff()
@@ -283,7 +280,8 @@ def run():
 
                 send_telegram_message(f"💰 Achat: {amount_qty} à {entry_price} USDT | TP: {tp} | SL: {sl}")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},BUY,{entry_price},{amount_qty},{tp},{sl}\n")
+                    f.write(f"{datetime.now()},BUY,{entry_price},{amount_qty},{tp},{sl}
+")
             except Exception as e:
                 logging.error(f"Erreur achat: {e}")
                 send_telegram_message(f"❌ Erreur: {e}")
@@ -302,31 +300,37 @@ def run():
                 exchange.create_market_sell_order(symbol, amount_qty)
                 send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée.")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SELL_TP,{current_price},{amount_qty},-,-\n")
+                    f.write(f"{datetime.now()},SELL_TP,{current_price},{amount_qty},-,-
+")
                 active_position = False
                 trade_count += 1
                 trade_wins += 1
                 last_trade_type = "SELL_TP"
+                notify_last_trade()
 
             elif current_price <= sl:
                 exchange.create_market_sell_order(symbol, amount_qty)
                 send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée.")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SELL_SL,{current_price},{amount_qty},-,-\n")
+                    f.write(f"{datetime.now()},SELL_SL,{current_price},{amount_qty},-,-
+")
                 active_position = False
                 trade_count += 1
                 trade_losses += 1
                 last_trade_type = "SELL_SL"
+                notify_last_trade()
 
             elif current_price > trailing_trigger and current_price <= trailing_sl:
                 exchange.create_market_sell_order(symbol, amount_qty)
                 send_telegram_message(f"🔁 Trailing SL déclenché à {current_price:.4f} 🛑 Fermeture de position.")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SELL_TRAIL,{current_price},{amount_qty},-,-\n")
+                    f.write(f"{datetime.now()},SELL_TRAIL,{current_price},{amount_qty},-,-
+")
                 active_position = False
                 trade_count += 1
                 trade_losses += 1
                 last_trade_type = "SELL_TRAIL"
+                notify_last_trade()
 
         except Exception as e:
             logging.error(f"❌ Erreur de vente : {e}")
@@ -340,4 +344,3 @@ while True:
             logging.error(f"💥 Crash: {e}")
             send_telegram_message(f"❌ Crash: {e}")
     time.sleep(30)
-
