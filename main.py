@@ -133,7 +133,10 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("❌ Fermer position", callback_data='close')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
+    if update.message:
+        await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
+    elif update.callback_query:
+        await update.callback_query.message.edit_text("Menu de contrôle :", reply_markup=reply_markup)
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -155,6 +158,7 @@ async def launch_telegram_bot():
     app.add_handler(CommandHandler("status", status_bot))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("close", force_sell))
+    app.add_handler(CommandHandler("start", menu))
     app.add_handler(CallbackQueryHandler(handle_button))
 
     async def trading_loop():
@@ -231,6 +235,8 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.run(launch_telegram_bot())
+
+
 
 
 
