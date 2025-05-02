@@ -7,3 +7,4 @@ python-dotenv
 matplotlib
 python-telegram-bot==20.3
 schedule
+nest_asyncio
