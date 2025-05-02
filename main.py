@@ -54,7 +54,7 @@ def notify_last_trade():
         return
     df = pd.read_csv(log_file)
     last = df.tail(1).iloc[0]
-    msg = f"📈 Trade clôturé:
+     msg = f"📈 Trade clôturé:\n{last['datetime']} | {last['action']} à {last['price']} USDT"
 {last['datetime']} | {last['action']} à {last['price']} USDT"
     send_telegram_message(msg)
 bot_running = True
