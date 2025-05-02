@@ -227,8 +227,10 @@ async def launch_telegram_bot():
     await app.run_polling()
 
 if __name__ == "__main__":
+    import nest_asyncio
+    nest_asyncio.apply()
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.run(launch_telegram_bot())
 
 
-threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
 
