@@ -54,6 +54,10 @@ is_processing = False
 
 app = Flask(__name__)
 
+@app.route("/status")
+def status():
+    return "<h3>✅ Bot opérationnel</h3>", 200
+
 async def send_telegram_message(app, msg):
     try:
         await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode=constants.ParseMode.HTML)
