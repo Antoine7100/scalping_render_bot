@@ -198,6 +198,38 @@ threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).star
 threading.Thread(target=start_telegram_bot).start()
 
 
+# Résumé quotidien des performances
+import schedule
+
+def daily_summary():
+    if not os.path.exists(log_file):
+        return
+    df = pd.read_csv(log_file)
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    today = datetime.now().date()
+    today_df = df[df['datetime'].dt.date == today]
+
+    pnl = 0
+    last_buy_price = None
+    for _, row in today_df.iterrows():
+        if row['action'] == 'BUY':
+            last_buy_price = row['price']
+        elif row['action'].startswith('SELL') and last_buy_price:
+            pnl += (row['price'] - last_buy_price) * row['qty']
+
+    pnl = round(pnl, 4)
+    send_telegram_message(f"📊 Résumé du jour : Gain estimé = {pnl} USDT")
+
+schedule.every().day.at("23:59").do(daily_summary)
+
+def scheduler_loop():
+    while True:
+        schedule.run_pending()
+        time.sleep(10)
+
+threading.Thread(target=scheduler_loop).start()
+
+
 def get_indicators(df):
     delta = df['close'].diff()
     gain = delta.where(delta > 0, 0).rolling(window=14).mean()
@@ -251,8 +283,7 @@ def run():
 
                 send_telegram_message(f"💰 Achat: {amount_qty} à {entry_price} USDT | TP: {tp} | SL: {sl}")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},BUY,{entry_price},{amount_qty},{tp},{sl}
-")
+                    f.write(f"{datetime.now()},BUY,{entry_price},{amount_qty},{tp},{sl}\n")
             except Exception as e:
                 logging.error(f"Erreur achat: {e}")
                 send_telegram_message(f"❌ Erreur: {e}")
@@ -271,8 +302,7 @@ def run():
                 exchange.create_market_sell_order(symbol, amount_qty)
                 send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée.")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SELL_TP,{current_price},{amount_qty},-,-
-")
+                    f.write(f"{datetime.now()},SELL_TP,{current_price},{amount_qty},-,-\n")
                 active_position = False
                 trade_count += 1
                 trade_wins += 1
@@ -282,8 +312,7 @@ def run():
                 exchange.create_market_sell_order(symbol, amount_qty)
                 send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée.")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SELL_SL,{current_price},{amount_qty},-,-
-")
+                    f.write(f"{datetime.now()},SELL_SL,{current_price},{amount_qty},-,-\n")
                 active_position = False
                 trade_count += 1
                 trade_losses += 1
@@ -293,8 +322,7 @@ def run():
                 exchange.create_market_sell_order(symbol, amount_qty)
                 send_telegram_message(f"🔁 Trailing SL déclenché à {current_price:.4f} 🛑 Fermeture de position.")
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SELL_TRAIL,{current_price},{amount_qty},-,-
-")
+                    f.write(f"{datetime.now()},SELL_TRAIL,{current_price},{amount_qty},-,-\n")
                 active_position = False
                 trade_count += 1
                 trade_losses += 1
@@ -312,3 +340,4 @@ while True:
             logging.error(f"💥 Crash: {e}")
             send_telegram_message(f"❌ Crash: {e}")
     time.sleep(30)
+
