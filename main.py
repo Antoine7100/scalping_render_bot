@@ -157,8 +157,8 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def launch_telegram_bot():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    await app.initialize()
     await app.bot.delete_webhook(drop_pending_updates=True)
+    await app.initialize()
     app.add_handler(CommandHandler("startbot", start_bot))
     app.add_handler(CommandHandler("stopbot", stop_bot))
     app.add_handler(CommandHandler("status", status_bot))
@@ -250,9 +250,6 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.run(launch_telegram_bot())
-
-
-
 
 
 
