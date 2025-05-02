@@ -8,10 +8,9 @@ import requests
 import numpy as np
 from flask import Flask, request
 import threading
-from telegram import Update, constants
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
-from telegram.inline.inlinekeyboardbutton import InlineKeyboardButton
-from telegram.inline.inlinekeyboardmarkup import InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 import schedule
 
 # Configuration des logs
@@ -51,7 +50,8 @@ entry_price = 0.0
 highest_price = 0.0
 last_order_info = {}
 bot_running = True
-bot_lock = threading.Lock()
+
+dp = None  # Dispatcher défini globalement pour éviter les conflits
 
 trade_count = 0
 trade_wins = 0
@@ -111,16 +111,14 @@ def status():
 
     return status_html + stats_html
 
-# Fonction pour envoyer un message Telegram
 def send_telegram_message(msg):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": ParseMode.HTML}
         requests.post(url, data=payload)
     except Exception as e:
         logging.error(f"Erreur Telegram : {e}")
 
-# Commandes Telegram
 def restricted(func):
     def wrapper(update: Update, context: CallbackContext):
         if update.effective_user.id != TELEGRAM_USER_ID:
@@ -186,21 +184,21 @@ def handle_button(update: Update, context: CallbackContext):
     elif command == 'close':
         force_sell(update, context)
 
-# Lancement du bot Telegram
-updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
-dp = updater.dispatcher
-dp.add_handler(CommandHandler("startbot", start_bot))
-dp.add_handler(CommandHandler("stopbot", stop_bot))
-dp.add_handler(CommandHandler("status", status_bot))
-dp.add_handler(CommandHandler("menu", menu))
-dp.add_handler(CommandHandler("close", force_sell))
-dp.add_handler(CallbackQueryHandler(handle_button))
-updater.start_polling()
+def launch_telegram_bot():
+    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+    global dp
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler("startbot", start_bot))
+    dp.add_handler(CommandHandler("stopbot", stop_bot))
+    dp.add_handler(CommandHandler("status", status_bot))
+    dp.add_handler(CommandHandler("menu", menu))
+    dp.add_handler(CommandHandler("close", force_sell))
+    dp.add_handler(CallbackQueryHandler(handle_button))
+    updater.start_polling()
 
-# Thread Flask
+threading.Thread(target=launch_telegram_bot).start()
 threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
 
-# Boucle de scalping
 while True:
     if bot_running:
         try:
