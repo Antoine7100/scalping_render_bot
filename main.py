@@ -8,8 +8,7 @@ import requests
 import numpy as np
 from flask import Flask, request
 import threading
-from telegram import Update
-from telegram.constants import ParseMode
+from telegram import Update, constants
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 from telegram.inline.inlinekeyboardbutton import InlineKeyboardButton
 from telegram.inline.inlinekeyboardmarkup import InlineKeyboardMarkup
@@ -116,7 +115,7 @@ def status():
 def send_telegram_message(msg):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg}
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
         requests.post(url, data=payload)
     except Exception as e:
         logging.error(f"Erreur Telegram : {e}")
