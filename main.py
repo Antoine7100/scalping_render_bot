@@ -157,8 +157,12 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def launch_telegram_bot():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+
+    # Supprime webhook avant polling pour éviter les conflits
     await app.bot.delete_webhook(drop_pending_updates=True)
+
     await app.initialize()
+
     app.add_handler(CommandHandler("startbot", start_bot))
     app.add_handler(CommandHandler("stopbot", stop_bot))
     app.add_handler(CommandHandler("status", status_bot))
@@ -168,10 +172,9 @@ async def launch_telegram_bot():
     app.add_handler(CallbackQueryHandler(handle_button))
 
     async def trading_loop():
-        global is_processing, bot_running, active_position, entry_price, highest_price, last_order_info
+        global bot_running, active_position, entry_price, highest_price, last_order_info
         while True:
-            if bot_running and not is_processing:
-                is_processing = True
+            if bot_running:
                 try:
                     df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
                     df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -180,32 +183,26 @@ async def launch_telegram_bot():
                     df['ema50'] = df['close'].ewm(span=50).mean()
                     df['macd'] = df['close'].ewm(span=12).mean() - df['close'].ewm(span=26).mean()
                     df['macdsignal'] = df['macd'].ewm(span=9).mean()
-                    df['rsi'] = 100 - (100 / (1 + df['close'].diff().where(lambda x: x > 0, 0).rolling(14).mean() /
-                                                df['close'].diff().where(lambda x: x < 0, 0).abs().rolling(14).mean()))
+                    rsi_up = df['close'].diff().clip(lower=0).rolling(14).mean()
+                    rsi_down = -df['close'].diff().clip(upper=0).rolling(14).mean()
+                    df['rsi'] = 100 - (100 / (1 + rsi_up / rsi_down))
+
                     last = df.iloc[-1]
                     price = last['close']
+
                     if not active_position:
                         if last['ema20'] > last['ema50'] and last['macd'] > last['macdsignal'] and 45 < last['rsi'] < 70:
                             balance = exchange.fetch_balance()
-                            usdt = balance['USDT']['free']
-                            if usdt < 3:
-                                await send_telegram_message(app, f"⚠️ Solde insuffisant : {usdt:.2f} USDT. Achat annulé.")
-                                is_processing = False
-                                continue
+                            usdt = balance['total']['USDT']
                             qty = round(usdt / price, 1)
-                            try:
-                                exchange.create_market_buy_order(symbol, qty)
-                            except Exception as e:
-                                await send_telegram_message(app, f"❌ Erreur Bybit : {e}\nMontant calculé : {qty} ADA à {price:.4f} USDT")
-                                is_processing = False
-                                continue
+                            exchange.create_market_buy_order(symbol, qty)
                             entry_price = price
                             highest_price = price
                             active_position = True
                             last_order_info = {"amount": qty, "entry_price": entry_price}
                             tp = round(price * 1.02, 4)
                             sl = round(price * 0.985, 4)
-                            await send_telegram_message(app, f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}")
+                            await send_telegram_message(app, f"🚀 Achat : {qty} ADA à {entry_price} | TP : {tp} | SL : {sl}")
                     else:
                         current_price = df['close'].iloc[-1]
                         highest_price = max(highest_price, current_price)
@@ -214,6 +211,7 @@ async def launch_telegram_bot():
                         trailing_trigger = entry_price * 1.015
                         trailing_sl = highest_price * 0.993
                         qty = last_order_info['amount']
+
                         if current_price >= tp:
                             exchange.create_market_sell_order(symbol, qty)
                             await send_telegram_message(app, f"✅ TP atteint à {current_price:.4f} 💰 Position fermée.")
@@ -226,17 +224,16 @@ async def launch_telegram_bot():
                             exchange.create_market_sell_order(symbol, qty)
                             await send_telegram_message(app, f"🔁 Trailing SL activé à {current_price:.4f} 🛑 Position clôturée.")
                             active_position = False
+
                 except Exception as e:
                     logging.error(f"💥 Erreur loop: {e}")
-                    await send_telegram_message(app, f"Erreur boucle : {e}")
-                finally:
-                    is_processing = False
-            await asyncio.sleep(30 if bot_running else 5)
+                    await send_telegram_message(app, f"Erreur loop : {e}")
+            await asyncio.sleep(30)
 
     async def daily_report_loop():
         while True:
             now = datetime.utcnow()
-            if now.hour == 20 and now.minute == 0:
+            if now.hour == 21 and now.minute == 0:
                 await send_daily_summary(app)
                 await asyncio.sleep(60)
             await asyncio.sleep(30)
@@ -250,6 +247,5 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.run(launch_telegram_bot())
-
 
 
