@@ -3,7 +3,6 @@ import os
 import pandas as pd
 import time
 import logging
-import matplotlib.pyplot as plt
 from datetime import datetime
 import requests
 import numpy as np
@@ -33,14 +32,13 @@ exchange = ccxt.bybit({
     'options': {'defaultType': 'future'}
 })
 
-symbols = ["ADA/USDT:USDT", "BTC/USDT:USDT", "ETH/USDT:USDT"]
+symbol = "ADA/USDT:USDT"
 leverage = 3
 
-for sym in symbols:
-    try:
-        exchange.set_leverage(leverage, sym)
-    except Exception as e:
-        logging.warning(f"⚠️ Levier non modifié pour {sym} : {e}")
+try:
+    exchange.set_leverage(leverage, symbol)
+except Exception as e:
+    logging.warning(f"⚠️ Levier non modifié : {e}")
 
 timeframe = '1m'
 limit = 150
@@ -56,7 +54,6 @@ trade_count = 0
 trade_wins = 0
 trade_losses = 0
 last_trade_type = ""
-aggressive_mode = False
 
 app = Flask(__name__)
 
@@ -119,152 +116,56 @@ def send_telegram_message(msg):
     except Exception as e:
         logging.error(f"Erreur Telegram : {e}")
 
-def get_indicators(df):
-    delta = df['close'].diff()
-    gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-    loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-    rs = gain / loss
-    df['rsi'] = 100 - (100 / (1 + rs))
-    df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
-    df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
-    df['ma10'] = df['close'].rolling(window=10).mean()
-    df['ma100'] = df['close'].rolling(window=100).mean()
-    exp1 = df['close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['close'].ewm(span=26, adjust=False).mean()
-    df['macd'] = exp1 - exp2
-    df['macdsignal'] = df['macd'].ewm(span=9, adjust=False).mean()
-    return df
+def restricted(func):
+    def wrapper(update, context):
+        if update.effective_user.id != TELEGRAM_USER_ID:
+            context.bot.send_message(chat_id=update.effective_chat.id, text="⛔️ Accès refusé.")
+            return
+        return func(update, context)
+    return wrapper
 
-def run():
-    global active_position, entry_price, highest_price, last_order_info
-
-    for symbol in symbols:
-        df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = get_indicators(df)
-
-        last_price = df['close'].iloc[-1]
-        rsi = df['rsi'].iloc[-1]
-        macd = df['macd'].iloc[-1]
-        macdsignal = df['macdsignal'].iloc[-1]
-        ema20 = df['ema20'].iloc[-1]
-        ema50 = df['ema50'].iloc[-1]
-        ma10 = df['ma10'].iloc[-1]
-        ma100 = df['ma100'].iloc[-1]
-        volume = df['volume'].iloc[-1]
-        volume_avg = df['volume'].rolling(window=20).mean().iloc[-1]
-        volume_ok = volume > volume_avg
-
-        rsi_min = 35 if aggressive_mode else 40
-        rsi_max = 75 if aggressive_mode else 70
-
-        trend_up = ema20 > ema50 and ma10 > ma100
-        signal_ok = macd > macdsignal and rsi_min < rsi < rsi_max and volume_ok
-
-        if not active_position and trend_up and signal_ok:
-            try:
-                balance = exchange.fetch_balance()
-                available_usdt = balance['total']['USDT']
-
-                if available_usdt < 5:
-                    send_telegram_message("⚠️ Solde insuffisant pour trade.")
-                    return
-
-                amount_qty = 1
-                order = exchange.create_market_buy_order(symbol, amount_qty)
-
-                entry_price = last_price
-                highest_price = last_price
-                active_position = True
-                last_order_info = {"amount": amount_qty, "entry_price": entry_price}
-
-                tp = round(entry_price * 1.02, 4)
-                sl = round(entry_price * 0.985, 4)
-
-                send_telegram_message(
-                    f"🟢 Achat {symbol} à {entry_price:.4f} | TP: {tp} | SL: {sl}
-"
-                    f"MACD: {macd:.4f} > Signal: {macdsignal:.4f}, RSI: {rsi:.2f}, EMA20 > EMA50, MA10 > MA100, Volume OK
-"
-                    f"Mode agressif : {'OUI' if aggressive_mode else 'NON'}"
-                )
-            except Exception as e:
-                send_telegram_message(f"❌ Erreur achat : {e}")
-
-        elif active_position:
-            current_price = df['close'].iloc[-1]
-            highest_price = max(highest_price, current_price)
-
-            tp = entry_price * 1.02
-            sl = entry_price * 0.985
-            trailing_trigger = entry_price * 1.015
-            trailing_sl = highest_price * 0.993
-
-            amount_qty = last_order_info.get("amount", 0)
-
-            try:
-                if current_price >= tp:
-                    exchange.create_market_sell_order(symbol, amount_qty)
-                    send_telegram_message(f"🎯 TP atteint à {current_price:.4f}")
-                    active_position = False
-
-                elif current_price <= sl:
-                    exchange.create_market_sell_order(symbol, amount_qty)
-                    send_telegram_message(f"⛔️ SL touché à {current_price:.4f}")
-                    active_position = False
-
-                elif current_price > trailing_trigger and current_price <= trailing_sl:
-                    exchange.create_market_sell_order(symbol, amount_qty)
-                    send_telegram_message(f"🔁 Trailing SL activé à {current_price:.4f}")
-                    active_position = False
-            except Exception as e:
-                send_telegram_message(f"❌ Erreur vente : {e}")
-
-def start_bot(update=None, context=None):
-    global bot_running
-    bot_running = True
-    if update:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="▶️ Bot activé !")
-
-def stop_bot(update=None, context=None):
-    global bot_running
-    bot_running = False
-    if update:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="⏸ Bot désactivé.")
-
-def status_bot(update, context):
-    message = "✅ Bot en cours d'exécution." if bot_running else "⛔ Bot désactivé."
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message)
-
+@restricted
 def force_sell(update, context):
     global active_position, last_order_info
+
     if active_position:
-        qty = last_order_info.get("amount", 0)
-        price = exchange.fetch_ticker(symbols[0])['last']
         try:
-            exchange.create_market_sell_order(symbols[0], qty)
-            send_telegram_message(f"🛑 Vente forcée exécutée à {price:.4f} pour {qty} unités.")
+            qty = last_order_info.get("amount", 0)
+            price = exchange.fetch_ticker(symbol)['last']
+            exchange.create_market_sell_order(symbol, qty)
+            send_telegram_message(f"🛑 Vente forcée exécutée à {price:.4f} pour {qty} ADA")
             active_position = False
         except Exception as e:
             send_telegram_message(f"❌ Erreur lors de la vente forcée : {e}")
     else:
-        send_telegram_message("ℹ️ Aucune position à fermer.")
+        send_telegram_message("ℹ️ Aucune position ouverte à fermer.")
 
-def mode_agressif(update, context):
-    global aggressive_mode
-    aggressive_mode = not aggressive_mode
-    status = "activé" if aggressive_mode else "désactivé"
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"⚡ Mode agressif {status.upper()} !
-Le RSI est maintenant entre 35 et 75.")
+@restricted
+def start_bot(update, context):
+    global bot_running
+    bot_running = True
+    send_telegram_message("▶️ Bot redémarré et actif.")
 
+@restricted
+def stop_bot(update, context):
+    global bot_running
+    bot_running = False
+    send_telegram_message("⏸ Bot mis en pause.")
+
+@restricted
+def status_bot(update, context):
+    if bot_running:
+        send_telegram_message("✅ Bot actif.")
+    else:
+        send_telegram_message("⛔ Bot en pause.")
+
+@restricted
 def menu(update, context):
     keyboard = [
         [InlineKeyboardButton("▶️ Lancer le bot", callback_data='startbot'),
          InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
         [InlineKeyboardButton("📊 Statut", callback_data='status'),
-         InlineKeyboardButton("❌ Fermer la position", callback_data='close')],
-        [InlineKeyboardButton("⚡ Mode agressif", callback_data='agressif')]
+         InlineKeyboardButton("❌ Fermer la position", callback_data='close')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(chat_id=update.effective_chat.id, text="📋 Menu de contrôle :", reply_markup=reply_markup)
@@ -273,34 +174,135 @@ def handle_button(update, context):
     query = update.callback_query
     query.answer()
     command = query.data
-    fake_update = update
-    fake_update.effective_user = update.effective_user
-    fake_update.effective_chat = update.effective_chat
-
     if command == 'startbot':
-        start_bot(fake_update, context)
+        start_bot(update, context)
     elif command == 'stopbot':
-        stop_bot(fake_update, context)
+        stop_bot(update, context)
     elif command == 'status':
-        status_bot(fake_update, context)
+        status_bot(update, context)
     elif command == 'close':
-        force_sell(fake_update, context)
-    elif command == 'agressif':
-        mode_agressif(fake_update, context)
+        force_sell(update, context)
 
 def start_telegram_bot():
     updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
+    dp.add_handler(CommandHandler("close", force_sell))
     dp.add_handler(CommandHandler("startbot", start_bot))
     dp.add_handler(CommandHandler("stopbot", stop_bot))
     dp.add_handler(CommandHandler("status", status_bot))
     dp.add_handler(CommandHandler("menu", menu))
-    dp.add_handler(CommandHandler("agressif", mode_agressif))
-    dp.add_handler(CommandHandler("close", force_sell))
     dp.add_handler(CallbackQueryHandler(handle_button))
     updater.start_polling()
 
+threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
 threading.Thread(target=start_telegram_bot).start()
+
+
+def get_indicators(df):
+    delta = df['close'].diff()
+    gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+    loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+    rs = gain / loss
+    df['rsi'] = 100 - (100 / (1 + rs))
+    df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
+    df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
+    exp1 = df['close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['close'].ewm(span=26, adjust=False).mean()
+    df['macd'] = exp1 - exp2
+    df['macdsignal'] = df['macd'].ewm(span=9, adjust=False).mean()
+    return df
+
+def run():
+    global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
+
+    df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+    df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df = get_indicators(df)
+
+    last_price = df['close'].iloc[-1]
+    rsi = df['rsi'].iloc[-1]
+    macd = df['macd'].iloc[-1]
+    macdsignal = df['macdsignal'].iloc[-1]
+    ema20 = df['ema20'].iloc[-1]
+    ema50 = df['ema50'].iloc[-1]
+
+    if not active_position:
+        buy_signal = macd > macdsignal and ema20 > ema50 and 40 < rsi < 70
+
+        if buy_signal:
+            try:
+                balance = exchange.fetch_balance()
+                available_usdt = balance['total']['USDT']
+
+                if available_usdt < 5:
+                    logging.warning("Solde insuffisant pour trade.")
+                    return
+
+                amount_qty = round(available_usdt / last_price, 2)
+                order = exchange.create_market_buy_order(symbol, amount_qty)
+
+                entry_price = last_price
+                highest_price = last_price
+                active_position = True
+                last_order_info = order
+                tp = round(entry_price * 1.02, 4)
+                sl = round(entry_price * 0.985, 4)
+
+                send_telegram_message(f"💰 Achat: {amount_qty} à {entry_price} USDT | TP: {tp} | SL: {sl}")
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},BUY,{entry_price},{amount_qty},{tp},{sl}
+")
+            except Exception as e:
+                logging.error(f"Erreur achat: {e}")
+                send_telegram_message(f"❌ Erreur: {e}")
+
+    else:
+        current_price = df['close'].iloc[-1]
+        highest_price = max(highest_price, current_price)
+        tp = entry_price * 1.02
+        sl = entry_price * 0.985
+        trailing_trigger = entry_price * 1.015
+        trailing_sl = highest_price * 0.993
+        amount_qty = last_order_info.get("amount", 0)
+
+        try:
+            if current_price >= tp:
+                exchange.create_market_sell_order(symbol, amount_qty)
+                send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée.")
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},SELL_TP,{current_price},{amount_qty},-,-
+")
+                active_position = False
+                trade_count += 1
+                trade_wins += 1
+                last_trade_type = "SELL_TP"
+
+            elif current_price <= sl:
+                exchange.create_market_sell_order(symbol, amount_qty)
+                send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée.")
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},SELL_SL,{current_price},{amount_qty},-,-
+")
+                active_position = False
+                trade_count += 1
+                trade_losses += 1
+                last_trade_type = "SELL_SL"
+
+            elif current_price > trailing_trigger and current_price <= trailing_sl:
+                exchange.create_market_sell_order(symbol, amount_qty)
+                send_telegram_message(f"🔁 Trailing SL déclenché à {current_price:.4f} 🛑 Fermeture de position.")
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},SELL_TRAIL,{current_price},{amount_qty},-,-
+")
+                active_position = False
+                trade_count += 1
+                trade_losses += 1
+                last_trade_type = "SELL_TRAIL"
+
+        except Exception as e:
+            logging.error(f"❌ Erreur de vente : {e}")
+            send_telegram_message(f"❌ Erreur lors de la vente : {e}")
 
 while True:
     if bot_running:
@@ -310,4 +312,3 @@ while True:
             logging.error(f"💥 Crash: {e}")
             send_telegram_message(f"❌ Crash: {e}")
     time.sleep(30)
-
