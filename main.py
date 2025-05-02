@@ -196,7 +196,7 @@ async def launch_telegram_bot():
                             try:
                                 exchange.create_market_buy_order(symbol, qty)
                             except Exception as e:
-await send_telegram_message(app, f"❌ Erreur Bybit : {e}\\nMontant calculé : {qty} ADA à {price:.4f} USDT")
+    await send_telegram_message(app, f"❌ Erreur Bybit : {e}\\nMontant calculé : {qty} ADA à {price:.4f} USDT")
 
                                 is_processing = False
                                 continue
@@ -251,8 +251,6 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.run(launch_telegram_bot())
-
-
 
 
 
