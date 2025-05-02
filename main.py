@@ -148,7 +148,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif command == 'close':
         await force_sell(update, context)
 
-def launch_telegram_bot():
+async def launch_telegram_bot():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("startbot", start_bot))
     app.add_handler(CommandHandler("stopbot", stop_bot))
@@ -159,7 +159,6 @@ def launch_telegram_bot():
 
     async def trading_loop():
         global is_processing, bot_running, active_position, entry_price, highest_price, last_order_info
-
         while True:
             if bot_running and not is_processing:
                 is_processing = True
@@ -173,10 +172,8 @@ def launch_telegram_bot():
                     df['macdsignal'] = df['macd'].ewm(span=9).mean()
                     df['rsi'] = 100 - (100 / (1 + df['close'].diff().where(lambda x: x > 0, 0).rolling(14).mean() /
                                                 df['close'].diff().where(lambda x: x < 0, 0).abs().rolling(14).mean()))
-
                     last = df.iloc[-1]
                     price = last['close']
-
                     if not active_position:
                         if last['ema20'] > last['ema50'] and last['macd'] > last['macdsignal'] and 45 < last['rsi'] < 70:
                             balance = exchange.fetch_balance()
@@ -198,7 +195,6 @@ def launch_telegram_bot():
                         trailing_trigger = entry_price * 1.015
                         trailing_sl = highest_price * 0.993
                         qty = last_order_info['amount']
-
                         if current_price >= tp:
                             exchange.create_market_sell_order(symbol, qty)
                             await send_telegram_message(app, f"✅ TP atteint à {current_price:.4f} 💰 Position fermée.")
@@ -216,13 +212,11 @@ def launch_telegram_bot():
                     await send_telegram_message(app, f"Erreur boucle : {e}")
                 finally:
                     is_processing = False
-
             await asyncio.sleep(30 if bot_running else 5)
 
     async def daily_report_loop():
         while True:
             now = datetime.utcnow()
-            # Envoie le résumé à 20h UTC tous les jours
             if now.hour == 20 and now.minute == 0:
                 await send_daily_summary(app)
                 await asyncio.sleep(60)
@@ -230,8 +224,11 @@ def launch_telegram_bot():
 
     asyncio.create_task(trading_loop())
     asyncio.create_task(daily_report_loop())
-    app.run_polling()
+    await app.run_polling()
 
-threading.Thread(target=launch_telegram_bot).start()
+if __name__ == "__main__":
+    asyncio.run(launch_telegram_bot())
+
+
 threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
 
