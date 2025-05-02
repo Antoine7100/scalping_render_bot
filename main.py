@@ -156,6 +156,8 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await force_sell(update, context)
 
 async def launch_telegram_bot():
+    # Supprimer tout ancien webhook actif pour éviter les conflits
+    await ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build().bot.delete_webhook(drop_pending_updates=True)
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("startbot", start_bot))
     app.add_handler(CommandHandler("stopbot", stop_bot))
@@ -239,6 +241,8 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.run(launch_telegram_bot())
+
+
 
 
 
