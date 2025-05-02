@@ -188,8 +188,18 @@ async def launch_telegram_bot():
                         if last['ema20'] > last['ema50'] and last['macd'] > last['macdsignal'] and 45 < last['rsi'] < 70:
                             balance = exchange.fetch_balance()
                             usdt = balance['total']['USDT']
+                            if usdt < 5:
+                                await send_telegram_message(app, f"⚠️ Solde insuffisant : {usdt:.2f} USDT. Achat annulé.")
+                                is_processing = False
+                                continue
                             qty = round(usdt / price, 1)
+                            try:
                             exchange.create_market_buy_order(symbol, qty)
+                        except Exception as e:
+                            await send_telegram_message(app, f"❌ Erreur Bybit : {e}
+Montant calculé : {qty} ADA à {price:.4f} USDT")
+                            is_processing = False
+                            continue
                             entry_price = price
                             highest_price = price
                             active_position = True
@@ -241,6 +251,7 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.run(launch_telegram_bot())
+
 
 
 
