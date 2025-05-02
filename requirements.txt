@@ -4,4 +4,5 @@ python-dotenv
 pandas
 requests
 matplotlib
+python-telegram-bot==13.15
 
