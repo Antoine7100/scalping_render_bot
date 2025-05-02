@@ -228,9 +228,10 @@ def launch_telegram_bot():
                 await asyncio.sleep(60)
             await asyncio.sleep(30)
 
-    asyncio.create_task(trading_loop()), when=0)
-    asyncio.create_task(daily_report_loop()), when=0)
+    asyncio.create_task(trading_loop())
+    asyncio.create_task(daily_report_loop())
     app.run_polling()
 
 threading.Thread(target=launch_telegram_bot).start()
 threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 10000}).start()
+
