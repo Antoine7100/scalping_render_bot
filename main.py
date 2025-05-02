@@ -8,8 +8,11 @@ import requests
 import numpy as np
 from flask import Flask, request
 import threading
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
+from telegram import Update
+from telegram.constants import ParseMode
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
+from telegram.inline.inlinekeyboardbutton import InlineKeyboardButton
+from telegram.inline.inlinekeyboardmarkup import InlineKeyboardMarkup
 import schedule
 
 # Configuration des logs
@@ -120,7 +123,7 @@ def send_telegram_message(msg):
 
 # Commandes Telegram
 def restricted(func):
-    def wrapper(update, context):
+    def wrapper(update: Update, context: CallbackContext):
         if update.effective_user.id != TELEGRAM_USER_ID:
             context.bot.send_message(chat_id=update.effective_chat.id, text="⛔️ Accès refusé.")
             return
@@ -128,26 +131,26 @@ def restricted(func):
     return wrapper
 
 @restricted
-def start_bot(update, context):
+def start_bot(update: Update, context: CallbackContext):
     global bot_running
     bot_running = True
     send_telegram_message("▶️ Bot lancé.")
 
 @restricted
-def stop_bot(update, context):
+def stop_bot(update: Update, context: CallbackContext):
     global bot_running
     bot_running = False
     send_telegram_message("⏸ Bot arrêté.")
 
 @restricted
-def status_bot(update, context):
+def status_bot(update: Update, context: CallbackContext):
     if bot_running:
         send_telegram_message("✅ Bot actif.")
     else:
         send_telegram_message("⛔ Bot en pause.")
 
 @restricted
-def force_sell(update, context):
+def force_sell(update: Update, context: CallbackContext):
     global active_position, last_order_info
     if active_position:
         try:
@@ -161,7 +164,7 @@ def force_sell(update, context):
         send_telegram_message("Aucune position à clôturer.")
 
 @restricted
-def menu(update, context):
+def menu(update: Update, context: CallbackContext):
     keyboard = [
         [InlineKeyboardButton("▶️ Lancer le bot", callback_data='startbot'),
          InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
@@ -171,7 +174,7 @@ def menu(update, context):
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(chat_id=update.effective_chat.id, text="Menu de contrôle :", reply_markup=reply_markup)
 
-def handle_button(update, context):
+def handle_button(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
     command = query.data
