@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
-TELEGRAM_BOT_TOKEN = "7962738343:AAfb9q0cAfaDokhHDax_2Qjf6OcMEAXikOs"
+TELEGRAM_BOT_TOKEN = "7962738343:AAEAsom6NSDKo5DyhVkQ1cCCV8ls_iGoUZo"
 TELEGRAM_CHAT_ID = "1440739670"
 TELEGRAM_USER_ID = 1440739670
 
