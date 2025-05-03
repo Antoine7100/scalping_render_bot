@@ -157,7 +157,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await force_sell(update, context)
 
 async def start_telegram():
-    global telegram_app
     telegram_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     await telegram_app.bot.delete_webhook(drop_pending_updates=True)
     telegram_app.add_handler(CommandHandler("startbot", start_bot))
@@ -169,7 +168,6 @@ async def start_telegram():
     await telegram_app.run_polling()
 
 def trading_loop():
-    global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
     try:
         df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -183,6 +181,8 @@ def trading_loop():
         df['rsi'] = 100 - (100 / (1 + gain / loss))
         last = df.iloc[-1]
         price = last['close']
+
+        global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
 
         if not active_position:
             if last['ema8'] > last['ema21'] and last['macd'] > last['macdsignal'] and 40 < last['rsi'] < 70:
@@ -238,8 +238,6 @@ def trading_loop():
         logging.error(f"💥 Erreur loop: {e}")
         asyncio.run(send_telegram_message(f"Erreur boucle : {e}"))
 
-# Résumé automatique quotidien
-
 def daily_summary():
     if not os.path.exists(log_file):
         return
@@ -258,21 +256,8 @@ def daily_summary():
 schedule.every(20).seconds.do(lambda: bot_running and trading_loop())
 schedule.every().day.at("22:00").do(daily_summary)
 
-# Lancement
-
-def run_schedule():
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-
-def run_bot():
-    asyncio.run(start_telegram())
-
 if __name__ == "__main__":
     threading.Thread(target=run_schedule).start()
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=10000)
-
-
-
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+    asyncio.run(start_telegram())
 
