@@ -167,6 +167,11 @@ async def start_telegram():
     telegram_app.add_handler(CallbackQueryHandler(handle_button))
     await telegram_app.run_polling()
 
+def run_schedule():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
 def trading_loop():
     try:
         df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
