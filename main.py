@@ -264,5 +264,7 @@ schedule.every().day.at("22:00").do(daily_summary)
 if __name__ == "__main__":
     threading.Thread(target=run_schedule).start()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-    asyncio.run(start_telegram())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_telegram())
+
 
