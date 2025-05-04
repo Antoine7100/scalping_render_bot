@@ -1,3 +1,6 @@
+# === BOT TRADING PRO BYBIT x TELEGRAM x FLASK ===
+# Fonctionnalités : Trading automatique + Telegram + Flask + Résumé + Contrôle complet
+
 import ccxt
 import os
 import pandas as pd
@@ -6,23 +9,26 @@ import logging
 from datetime import datetime
 import requests
 import numpy as np
-from flask import Flask, request
+from flask import Flask
 import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import asyncio
 import schedule
 
-# Configuration des logs
+# === LOGGING ===
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
+# === CONFIG ===
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
-
 TELEGRAM_BOT_TOKEN = "7962738343:AAEAsom6NSDKo5DyhVkQ1cCCV8ls_iGoUZo"
 TELEGRAM_CHAT_ID = "1440739670"
 TELEGRAM_USER_ID = 1440739670
+symbol = "ADA/USDT:USDT"
+leverage = 10
 
+# === BYBIT ===
 exchange = ccxt.bybit({
     'apiKey': api_key,
     'secret': api_secret,
@@ -30,14 +36,12 @@ exchange = ccxt.bybit({
     'options': {'defaultType': 'future'}
 })
 
-symbol = "ADA/USDT:USDT"
-leverage = 10
-
 try:
     exchange.set_leverage(leverage, symbol)
 except Exception as e:
-    logging.warning(f"⚠️ Levier non modifié : {e}")
+    logging.warning(f"⚠️ Levier non appliqué : {e}")
 
+# === VARIABLES ===
 timeframe = '1m'
 limit = 100
 log_file = "trades_log.csv"
@@ -46,28 +50,35 @@ entry_price = 0.0
 highest_price = 0.0
 last_order_info = {}
 bot_running = True
-is_processing = False
 trade_count = 0
 trade_wins = 0
 trade_losses = 0
 last_trade_type = ""
 
+# === FLASK ===
 app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "<h2>Bot actif - Voir /trades et /status</h2>"
+    return "<h2>Bot actif - Voir /status et /trades</h2>"
 
 @app.route("/status")
 def status():
+    try:
+        current_price = exchange.fetch_ticker(symbol)['last']
+    except:
+        current_price = 0
+
     if active_position:
         tp = round(entry_price * 1.03, 4)
         sl = round(entry_price * 0.97, 4)
-        html = f"<ul><li>✅ Position ouverte</li><li>💰 Entrée : {entry_price}</li><li>📈 Haut : {highest_price}</li><li>TP : {tp} | SL : {sl}</li></ul>"
+        direction = "TP ✅" if abs(current_price - tp) < abs(current_price - sl) else "SL ❌"
+        html = f"<ul><li>✅ Position ouverte</li><li>💰 Entrée : {entry_price:.4f}</li><li>📉 Prix actuel : {current_price:.4f}</li><li>🎯 TP : {tp:.4f} | ⛔ SL : {sl:.4f}</li><li>📍 Tendance : vers {direction}</li></ul>"
     else:
         html = "<ul><li>❌ Aucune position ouverte</li></ul>"
+
     stats = f"<ul><li>Total trades : {trade_count}</li><li>✅ Gagnants : {trade_wins}</li><li>❌ Perdants : {trade_losses}</li><li>Dernier trade : {last_trade_type}</li></ul>"
-    return f"<h2>Status Bot</h2>{html}<h3>Performance</h3>{stats}"
+    return f"<h2>Statut du Bot</h2>{html}<h3>Performance</h3>{stats}"
 
 @app.route("/trades")
 def trades():
@@ -85,10 +96,11 @@ def trades():
     html += "</table>"
     return html
 
+# === TELEGRAM ===
 async def send_telegram_message(msg):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
         requests.post(url, data=payload)
     except Exception as e:
         logging.error(f"Erreur Telegram : {e}")
@@ -115,7 +127,18 @@ async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "✅ Bot actif." if bot_running else "⛔ Bot en pause."
+    try:
+        current_price = exchange.fetch_ticker(symbol)['last']
+    except:
+        current_price = 0
+
+    if active_position:
+        tp = round(entry_price * 1.03, 4)
+        sl = round(entry_price * 0.97, 4)
+        direction = "TP ✅" if abs(current_price - tp) < abs(current_price - sl) else "SL ❌"
+        msg = f"📊 <b>Statut de la position :</b>\n✅ <b>Position ouverte sur {symbol}</b>\n💰 Entrée : {entry_price:.4f} USDT\n📉 Prix actuel : {current_price:.4f} USDT\n🎯 TP : {tp:.4f} | ⛔ SL : {sl:.4f}\n📍 Tendance : vers {direction}"
+    else:
+        msg = "📊 Aucune position ouverte actuellement."
     await send_telegram_message(msg)
 
 @restricted
@@ -133,12 +156,28 @@ async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_telegram_message("Aucune position à clôturer.")
 
 @restricted
+async def trades_telegram(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not os.path.exists(log_file):
+        await update.message.reply_text("Aucun trade enregistré.")
+        return
+    df = pd.read_csv(log_file)
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    today = datetime.now().date()
+    df_today = df[df['datetime'].dt.date == today]
+    if df_today.empty:
+        await update.message.reply_text("Aucun trade exécuté aujourd'hui.")
+        return
+    msg = "📋 <b>Trades du jour :</b>\n"
+    for _, row in df_today.iterrows():
+        msg += f"\n📅 {row['datetime']}\nAction : {row['action']} | Prix : {row['price']} | Qté : {row['qty']}\nTP : {row['take_profit']} | SL : {row['stop_loss']}\n"
+    await send_telegram_message(msg)
+
+@restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("▶️ Lancer le bot", callback_data='startbot'),
-         InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
-        [InlineKeyboardButton("📊 Statut", callback_data='status'),
-         InlineKeyboardButton("❌ Fermer position", callback_data='close')]
+        [InlineKeyboardButton("▶️ Lancer", callback_data='startbot'), InlineKeyboardButton("⏸ Stopper", callback_data='stopbot')],
+        [InlineKeyboardButton("📊 Statut", callback_data='status'), InlineKeyboardButton("❌ Fermer position", callback_data='close')],
+        [InlineKeyboardButton("📋 Voir les trades", callback_data='trades')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
@@ -146,27 +185,26 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data
-    if data == "startbot":
-        await start_bot(update, context)
-    elif data == "stopbot":
-        await stop_bot(update, context)
-    elif data == "status":
-        await status_bot(update, context)
-    elif data == "close":
-        await force_sell(update, context)
+    command = query.data
+    if command == 'startbot': await start_bot(update, context)
+    elif command == 'stopbot': await stop_bot(update, context)
+    elif command == 'status': await status_bot(update, context)
+    elif command == 'close': await force_sell(update, context)
+    elif command == 'trades': await trades_telegram(update, context)
 
 async def start_telegram():
-    telegram_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    await telegram_app.bot.delete_webhook(drop_pending_updates=True)
-    telegram_app.add_handler(CommandHandler("startbot", start_bot))
-    telegram_app.add_handler(CommandHandler("stopbot", stop_bot))
-    telegram_app.add_handler(CommandHandler("status", status_bot))
-    telegram_app.add_handler(CommandHandler("menu", menu))
-    telegram_app.add_handler(CommandHandler("close", force_sell))
-    telegram_app.add_handler(CallbackQueryHandler(handle_button))
-    await telegram_app.run_polling()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    app.add_handler(CommandHandler("startbot", start_bot))
+    app.add_handler(CommandHandler("stopbot", stop_bot))
+    app.add_handler(CommandHandler("status", status_bot))
+    app.add_handler(CommandHandler("menu", menu))
+    app.add_handler(CommandHandler("close", force_sell))
+    app.add_handler(CommandHandler("trades", trades_telegram))
+    app.add_handler(CallbackQueryHandler(handle_button))
+    await app.run_polling()
 
+# === THREADS ===
 def run_schedule():
     while True:
         schedule.run_pending()
@@ -190,7 +228,7 @@ def trading_loop():
         global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
 
         if not active_position:
-            if last['ema8'] > last['ema21'] and last['macd'] > last['macdsignal'] and 40 < last['rsi'] < 70:
+            if last['ema8'] > last['ema21'] and last['macd'] > last['macdsignal'] and 35 < last['rsi'] < 75:
                 balance = exchange.fetch_balance()
                 usdt = balance['USDT']['free']
                 qty = round(usdt / price, 1)
@@ -212,7 +250,6 @@ def trading_loop():
             trailing_trigger = entry_price * 1.02
             trailing_sl = highest_price * 0.99
             qty = last_order_info['amount']
-
             if current_price >= tp:
                 exchange.create_market_sell_order(symbol, qty)
                 trade_wins += 1
@@ -252,19 +289,17 @@ def daily_summary():
     df_today = df[df['datetime'].dt.date == today]
     if df_today.empty:
         return
-    win = len(df_today[df_today['action'].isin(['TP'])])
-    loss = len(df_today[df_today['action'].isin(['SL'])])
+    win = len(df_today[df_today['action'] == 'TP'])
+    loss = len(df_today[df_today['action'] == 'SL'])
     total = len(df_today)
     summary = f"📊 Résumé du {today} :\nTotal : {total} trades\n✅ Gagnants : {win}\n❌ Perdants : {loss}"
     asyncio.run(send_telegram_message(summary))
 
+# === SCHEDULING ===
 schedule.every(20).seconds.do(lambda: bot_running and trading_loop())
 schedule.every().day.at("22:00").do(daily_summary)
 
 if __name__ == "__main__":
     threading.Thread(target=run_schedule).start()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_telegram())
-
-
+    threading.Thread(target=start_telegram).start()
