@@ -1,18 +1,18 @@
 import ccxt
 import os
 import pandas as pd
-import schedule
 import time
 import logging
 from datetime import datetime
 import requests
+import numpy as np
+from flask import Flask
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import asyncio
-import threading
+import schedule
 import shutil
-from flask import Flask
-
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -150,14 +150,14 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Confirmer la réception du clic
+    await query.answer()
     data = query.data
     if data == "startbot":
         await start_bot(update, context)
     elif data == "stopbot":
         await stop_bot(update, context)
     elif data == "status":
-        await open_trade_status(update, context)
+        await status_bot(update, context)
     elif data == "close":
         await force_sell(update, context)
     elif data == "open_trade":
@@ -237,7 +237,7 @@ def trading_loop():
                 tp = round(price * 1.03, 4)
                 sl = round(price * 0.97, 4)
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()}|buy,{price},{qty},{tp},{sl}\n")
+                 f.write(f"{datetime.now()}|buy,{price},{qty},{tp},{sl}\n")
                 asyncio.run(send_telegram_message(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}"))
         else:
             current_price = price
@@ -285,8 +285,10 @@ async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app_telegram.add_handler(CommandHandler("startbot", start_bot))
     app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
-    app_telegram.add_handler(CommandHandler("menu", menu))  # Commande pour afficher le menu
-    app_telegram.add_handler(CallbackQueryHandler(handle_button))  # Gérer les clics sur les boutons
+    app_telegram.add_handler(CommandHandler("menu", menu))
+    app_telegram.add_handler(CommandHandler("close", force_sell))
+    app_telegram.add_handler(CommandHandler("bilan", bilan))
+    app_telegram.add_handler(CallbackQueryHandler(handle_button))
 
     await app_telegram.initialize()
     await app_telegram.start()
@@ -299,4 +301,5 @@ threading.Thread(target=lambda: asyncio.run(launch_telegram())).start()
 while True:
     schedule.run_pending()
     time.sleep(1)
+
 
