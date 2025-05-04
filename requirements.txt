@@ -9,3 +9,4 @@ matplotlib
 python-telegram-bot==20.3
 schedule==1.1.0 
 nest_asyncio
+gunicorn
