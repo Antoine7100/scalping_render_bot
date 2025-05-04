@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 import requests
 import numpy as np
-from flask import Flask, request
+from flask import Flask
 import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -32,11 +32,6 @@ exchange = ccxt.bybit({
 
 symbol = "ADA/USDT:USDT"
 leverage = 10
-
-try:
-    exchange.set_leverage(leverage, symbol)
-except Exception as e:
-    logging.warning(f"⚠️ Levier non modifié : {e}")
 
 timeframe = '1m'
 limit = 100
@@ -156,24 +151,41 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "close":
         await force_sell(update, context)
 
-async def start_telegram():
+async def start_all():
+    try:
+        exchange.set_leverage(leverage, symbol)
+    except Exception as e:
+        logging.warning(f"⚠️ Levier non modifié : {e}")
+
     telegram_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    await telegram_app.bot.delete_webhook(drop_pending_updates=True)
     telegram_app.add_handler(CommandHandler("startbot", start_bot))
     telegram_app.add_handler(CommandHandler("stopbot", stop_bot))
     telegram_app.add_handler(CommandHandler("status", status_bot))
     telegram_app.add_handler(CommandHandler("menu", menu))
     telegram_app.add_handler(CommandHandler("close", force_sell))
     telegram_app.add_handler(CallbackQueryHandler(handle_button))
-    await telegram_app.run_polling()
 
-def run_schedule():
+    async def polling():
+        await telegram_app.initialize()
+        await telegram_app.start()
+        await telegram_app.updater.start_polling()
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(polling())
+
     while True:
         schedule.run_pending()
-        time.sleep(1)
+        await asyncio.sleep(1)
+
+schedule.every(20).seconds.do(lambda: trading_loop())
+
 
 def trading_loop():
+    global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
     try:
+        if not bot_running:
+            return
+
         df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['ema8'] = df['close'].ewm(span=8).mean()
@@ -184,10 +196,9 @@ def trading_loop():
         gain = delta.where(delta > 0, 0).rolling(14).mean()
         loss = -delta.where(delta < 0, 0).rolling(14).mean()
         df['rsi'] = 100 - (100 / (1 + gain / loss))
+
         last = df.iloc[-1]
         price = last['close']
-
-        global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
 
         if not active_position:
             if last['ema8'] > last['ema21'] and last['macd'] > last['macdsignal'] and 40 < last['rsi'] < 70:
@@ -243,25 +254,6 @@ def trading_loop():
         logging.error(f"💥 Erreur loop: {e}")
         asyncio.run(send_telegram_message(f"Erreur boucle : {e}"))
 
-def daily_summary():
-    if not os.path.exists(log_file):
-        return
-    df = pd.read_csv(log_file)
-    df['datetime'] = pd.to_datetime(df['datetime'])
-    today = datetime.now().date()
-    df_today = df[df['datetime'].dt.date == today]
-    if df_today.empty:
-        return
-    win = len(df_today[df_today['action'].isin(['TP'])])
-    loss = len(df_today[df_today['action'].isin(['SL'])])
-    total = len(df_today)
-    summary = f"📊 Résumé du {today} :\nTotal : {total} trades\n✅ Gagnants : {win}\n❌ Perdants : {loss}"
-    asyncio.run(send_telegram_message(summary))
-
-schedule.every(20).seconds.do(lambda: bot_running and trading_loop())
-schedule.every().day.at("22:00").do(daily_summary)
-
 if __name__ == "__main__":
-    threading.Thread(target=run_schedule).start()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-    asyncio.run(start_telegram())
+    asyncio.run(start_all())
