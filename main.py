@@ -18,7 +18,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
-
 TELEGRAM_BOT_TOKEN = "7962738343:AAEAsom6NSDKo5DyhVkQ1cCCV8ls_iGoUZo"
 TELEGRAM_CHAT_ID = "1440739670"
 TELEGRAM_USER_ID = 1440739670
@@ -32,16 +31,15 @@ exchange = ccxt.bybit({
 
 symbol = "ADA/USDT:USDT"
 leverage = 10
-
+limit = 150
 timeframe = '1m'
-limit = 100
 log_file = "trades_log.csv"
+
 active_position = False
 entry_price = 0.0
 highest_price = 0.0
 last_order_info = {}
 bot_running = True
-is_processing = False
 trade_count = 0
 trade_wins = 0
 trade_losses = 0
@@ -51,7 +49,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "<h2>Bot actif - Voir /trades et /status</h2>"
+    return "<h2>Bot actif - Voir /status et /trades</h2>"
 
 @app.route("/status")
 def status():
@@ -109,11 +107,6 @@ async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_telegram_message("⏸ Bot arrêté.")
 
 @restricted
-async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "✅ Bot actif." if bot_running else "⛔ Bot en pause."
-    await send_telegram_message(msg)
-
-@restricted
 async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global active_position, last_order_info
     if active_position:
@@ -128,12 +121,25 @@ async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_telegram_message("Aucune position à clôturer.")
 
 @restricted
+async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if active_position:
+        current_price = exchange.fetch_ticker(symbol)['last']
+        tp = round(entry_price * 1.03, 4)
+        sl = round(entry_price * 0.97, 4)
+        tendance = "📈 Vers TP" if current_price > entry_price else "📉 Vers SL"
+        msg = f"🟠 Position ouverte\nEntrée : {entry_price:.4f}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
+    else:
+        msg = "❌ Aucune position ouverte."
+    await send_telegram_message(msg)
+
+@restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("▶️ Lancer le bot", callback_data='startbot'),
          InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
         [InlineKeyboardButton("📊 Statut", callback_data='status'),
-         InlineKeyboardButton("❌ Fermer position", callback_data='close')]
+         InlineKeyboardButton("🔍 Trade en cours", callback_data='open_trade')],
+        [InlineKeyboardButton("❌ Fermer position", callback_data='close')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
@@ -150,110 +156,48 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_bot(update, context)
     elif data == "close":
         await force_sell(update, context)
+    elif data == "open_trade":
+        await open_trade_status(update, context)
 
-async def start_all():
-    try:
-        exchange.set_leverage(leverage, symbol)
-    except Exception as e:
-        logging.warning(f"⚠️ Levier non modifié : {e}")
+@restricted
+async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = "✅ Bot actif." if bot_running else "⛔ Bot en pause."
+    await send_telegram_message(msg)
 
-    telegram_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    telegram_app.add_handler(CommandHandler("startbot", start_bot))
-    telegram_app.add_handler(CommandHandler("stopbot", stop_bot))
-    telegram_app.add_handler(CommandHandler("status", status_bot))
-    telegram_app.add_handler(CommandHandler("menu", menu))
-    telegram_app.add_handler(CommandHandler("close", force_sell))
-    telegram_app.add_handler(CallbackQueryHandler(handle_button))
+@restricted
+async def daily_report():
+    if not os.path.exists(log_file):
+        await send_telegram_message("Aucun trade aujourd'hui.")
+        return
+    df = pd.read_csv(log_file)
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    today = datetime.now().date()
+    today_trades = df[df['datetime'].dt.date == today]
+    if today_trades.empty:
+        await send_telegram_message("📉 Aucun trade exécuté aujourd'hui.")
+    else:
+        win_count = (today_trades['action'] == 'TP').sum()
+        loss_count = (today_trades['action'] == 'SL').sum()
+        msg = f"📊 Bilan du {today} :\n✅ Gagnants : {win_count}\n❌ Perdants : {loss_count}\n📦 Total : {len(today_trades)}"
+        await send_telegram_message(msg)
 
-    async def polling():
-        await telegram_app.initialize()
-        await telegram_app.start()
-        await telegram_app.updater.start_polling()
+schedule.every().day.at("23:55").do(lambda: asyncio.run(daily_report()))
 
-    loop = asyncio.get_event_loop()
-    loop.create_task(polling())
+schedule.every(20).seconds.do(trading_loop)
 
-    while True:
-        schedule.run_pending()
-        await asyncio.sleep(1)
+async def launch_telegram():
+    app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app_telegram.add_handler(CommandHandler("startbot", start_bot))
+    app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
+    app_telegram.add_handler(CommandHandler("menu", menu))
+    app_telegram.add_handler(CommandHandler("close", force_sell))
+    app_telegram.add_handler(CallbackQueryHandler(handle_button))
+    await app_telegram.start()
+    await app_telegram.updater.start_polling()
 
-schedule.every(20).seconds.do(lambda: trading_loop())
+threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+threading.Thread(target=lambda: asyncio.run(launch_telegram())).start()
 
-
-def trading_loop():
-    global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
-    try:
-        if not bot_running:
-            return
-
-        df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['ema8'] = df['close'].ewm(span=8).mean()
-        df['ema21'] = df['close'].ewm(span=21).mean()
-        df['macd'] = df['close'].ewm(span=12).mean() - df['close'].ewm(span=26).mean()
-        df['macdsignal'] = df['macd'].ewm(span=9).mean()
-        delta = df['close'].diff()
-        gain = delta.where(delta > 0, 0).rolling(14).mean()
-        loss = -delta.where(delta < 0, 0).rolling(14).mean()
-        df['rsi'] = 100 - (100 / (1 + gain / loss))
-
-        last = df.iloc[-1]
-        price = last['close']
-
-        if not active_position:
-            if last['ema8'] > last['ema21'] and last['macd'] > last['macdsignal'] and 40 < last['rsi'] < 70:
-                balance = exchange.fetch_balance()
-                usdt = balance['USDT']['free']
-                qty = round(usdt / price, 1)
-                exchange.create_market_buy_order(symbol, qty)
-                entry_price = price
-                highest_price = price
-                active_position = True
-                last_order_info = {"amount": qty, "entry_price": entry_price}
-                tp = round(price * 1.03, 4)
-                sl = round(price * 0.97, 4)
-                with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},buy,{price},{qty},{tp},{sl}\n")
-                asyncio.run(send_telegram_message(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}"))
-        else:
-            current_price = price
-            highest_price = max(highest_price, current_price)
-            tp = entry_price * 1.03
-            sl = entry_price * 0.97
-            trailing_trigger = entry_price * 1.02
-            trailing_sl = highest_price * 0.99
-            qty = last_order_info['amount']
-
-            if current_price >= tp:
-                exchange.create_market_sell_order(symbol, qty)
-                trade_wins += 1
-                last_trade_type = "TP"
-                asyncio.run(send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée."))
-                with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},TP,{current_price},{qty},{tp},{sl}\n")
-                active_position = False
-                trade_count += 1
-            elif current_price <= sl:
-                exchange.create_market_sell_order(symbol, qty)
-                trade_losses += 1
-                last_trade_type = "SL"
-                asyncio.run(send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée."))
-                with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SL,{current_price},{qty},{tp},{sl}\n")
-                active_position = False
-                trade_count += 1
-            elif current_price > trailing_trigger and current_price <= trailing_sl:
-                exchange.create_market_sell_order(symbol, qty)
-                last_trade_type = "Trailing"
-                asyncio.run(send_telegram_message(f"🔁 Trailing SL activé à {current_price:.4f} 🛑 Position clôturée."))
-                with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},Trailing,{current_price},{qty},{tp},{sl}\n")
-                active_position = False
-                trade_count += 1
-    except Exception as e:
-        logging.error(f"💥 Erreur loop: {e}")
-        asyncio.run(send_telegram_message(f"Erreur boucle : {e}"))
-
-if __name__ == "__main__":
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-    asyncio.run(start_all())
+while True:
+    schedule.run_pending()
+    time.sleep(1)
