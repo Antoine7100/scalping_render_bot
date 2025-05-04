@@ -5,13 +5,10 @@ import time
 import logging
 from datetime import datetime
 import requests
-import numpy as np
-from flask import Flask
-import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import asyncio
-import schedule
+import threading
 import shutil
 
 # Configuration des logs
@@ -150,14 +147,14 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # Confirmer la réception du clic
     data = query.data
     if data == "startbot":
         await start_bot(update, context)
     elif data == "stopbot":
         await stop_bot(update, context)
     elif data == "status":
-        await status_bot(update, context)
+        await open_trade_status(update, context)
     elif data == "close":
         await force_sell(update, context)
     elif data == "open_trade":
@@ -285,10 +282,8 @@ async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app_telegram.add_handler(CommandHandler("startbot", start_bot))
     app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
-    app_telegram.add_handler(CommandHandler("menu", menu))
-    app_telegram.add_handler(CommandHandler("close", force_sell))
-    app_telegram.add_handler(CommandHandler("bilan", bilan))
-    app_telegram.add_handler(CallbackQueryHandler(handle_button))
+    app_telegram.add_handler(CommandHandler("menu", menu))  # Commande pour afficher le menu
+    app_telegram.add_handler(CallbackQueryHandler(handle_button))  # Gérer les clics sur les boutons
 
     await app_telegram.initialize()
     await app_telegram.start()
