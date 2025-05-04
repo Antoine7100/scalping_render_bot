@@ -127,10 +127,7 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tp = round(entry_price * 1.03, 4)
         sl = round(entry_price * 0.97, 4)
         tendance = "📈 Vers TP" if current_price > entry_price else "📉 Vers SL"
-        msg = f"🟠 Position ouverte
-Entrée : {entry_price:.4f}
-TP : {tp} | SL : {sl}
-Prix actuel : {current_price:.4f} {tendance}"
+        msg = f"🟠 Position ouverte\nEntrée : {entry_price:.4f}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
     else:
         msg = "❌ Aucune position ouverte."
     await send_telegram_message(msg)
@@ -181,10 +178,7 @@ async def daily_report():
     else:
         win_count = (today_trades['action'] == 'TP').sum()
         loss_count = (today_trades['action'] == 'SL').sum()
-        msg = f"📊 Bilan du {today} :
-✅ Gagnants : {win_count}
-❌ Perdants : {loss_count}
-📦 Total : {len(today_trades)}"
+        msg = f"📊 Bilan du {today} :\n✅ Gagnants : {win_count}\n❌ Perdants : {loss_count}\n📦 Total : {len(today_trades)}"
         await send_telegram_message(msg)
 
 schedule.every().day.at("23:55").do(lambda: asyncio.run(daily_report()))
@@ -226,8 +220,7 @@ def trading_loop():
                 tp = round(price * 1.03, 4)
                 sl = round(price * 0.97, 4)
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},buy,{price},{qty},{tp},{sl}
-")
+                    f.write(f"{datetime.now()},buy,{price},{qty},{tp},{sl}\n")
                 asyncio.run(send_telegram_message(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}"))
         else:
             current_price = price
@@ -243,8 +236,7 @@ def trading_loop():
                 last_trade_type = "TP"
                 asyncio.run(send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée."))
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},TP,{current_price},{qty},{tp},{sl}
-")
+                    f.write(f"{datetime.now()},TP,{current_price},{qty},{tp},{sl}\n")
                 active_position = False
                 trade_count += 1
             elif current_price <= sl:
@@ -253,8 +245,7 @@ def trading_loop():
                 last_trade_type = "SL"
                 asyncio.run(send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée."))
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},SL,{current_price},{qty},{tp},{sl}
-")
+                    f.write(f"{datetime.now()},SL,{current_price},{qty},{tp},{sl}\n")
                 active_position = False
                 trade_count += 1
             elif current_price > trailing_trigger and current_price <= trailing_sl:
@@ -262,8 +253,7 @@ def trading_loop():
                 last_trade_type = "Trailing"
                 asyncio.run(send_telegram_message(f"🔁 Trailing SL activé à {current_price:.4f} 🛑 Position clôturée."))
                 with open(log_file, 'a') as f:
-                    f.write(f"{datetime.now()},Trailing,{current_price},{qty},{tp},{sl}
-")
+                    f.write(f"{datetime.now()},Trailing,{current_price},{qty},{tp},{sl}\n")
                 active_position = False
                 trade_count += 1
 
@@ -273,9 +263,20 @@ def trading_loop():
 
 schedule.every(20).seconds.do(trading_loop)
 
+async def launch_telegram():
+    app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app_telegram.add_handler(CommandHandler("startbot", start_bot))
+    app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
+    app_telegram.add_handler(CommandHandler("menu", menu))
+    app_telegram.add_handler(CommandHandler("close", force_sell))
+    app_telegram.add_handler(CallbackQueryHandler(handle_button))
+    await app_telegram.start()
+    await app_telegram.updater.start_polling()
+
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 threading.Thread(target=lambda: asyncio.run(launch_telegram())).start()
 
 while True:
     schedule.run_pending()
     time.sleep(1)
+
