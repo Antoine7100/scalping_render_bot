@@ -10,6 +10,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import asyncio
 import threading
 import shutil
+from flask import Flask
+
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
