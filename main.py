@@ -1,6 +1,7 @@
 import ccxt
 import os
 import pandas as pd
+import schedule
 import time
 import logging
 from datetime import datetime
