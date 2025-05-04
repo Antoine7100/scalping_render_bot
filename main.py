@@ -237,7 +237,8 @@ def trading_loop():
                 tp = round(price * 1.03, 4)
                 sl = round(price * 0.97, 4)
                 with open(log_file, 'a') as f:
-f.write(f"{datetime.now()},buy,{price},{qty},{tp},{sl}\n")
+        f.write(f"{datetime.now()},buy,{price},{qty},{tp},{sl}
+")
                 asyncio.run(send_telegram_message(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}"))
         else:
             current_price = price
@@ -254,7 +255,8 @@ f.write(f"{datetime.now()},buy,{price},{qty},{tp},{sl}\n")
                 last_trade_type = "TP"
                 asyncio.run(send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée."))
                 with open(log_file, 'a') as f:
-f.write(f"{datetime.now()},TP,{current_price},{qty},{tp},{sl}\n")
+    f.write(f"{datetime.now()},TP,{current_price},{qty},{tp},{sl}
+")
                 active_position = False
                 trade_count += 1
             elif current_price <= sl:
@@ -263,7 +265,8 @@ f.write(f"{datetime.now()},TP,{current_price},{qty},{tp},{sl}\n")
                 last_trade_type = "SL"
                 asyncio.run(send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée."))
                 with open(log_file, 'a') as f:
-f.write(f"{datetime.now()},SL,{current_price},{qty},{tp},{sl}\n")
+    f.write(f"{datetime.now()},SL,{current_price},{qty},{tp},{sl}
+")
                 active_position = False
                 trade_count += 1
             elif current_price > trailing_trigger and current_price <= trailing_sl:
@@ -271,7 +274,8 @@ f.write(f"{datetime.now()},SL,{current_price},{qty},{tp},{sl}\n")
                 last_trade_type = "Trailing"
                 asyncio.run(send_telegram_message(f"🔁 Trailing SL activé à {current_price:.4f} 🛑 Position clôturée."))
                 with open(log_file, 'a') as f:
-f.write(f"{datetime.now()},Trailing,{current_price},{qty},{tp},{sl}\n")
+    f.write(f"{datetime.now()},Trailing,{current_price},{qty},{tp},{sl}
+")
                 active_position = False
                 trade_count += 1
 
