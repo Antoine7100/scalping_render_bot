@@ -201,3 +201,83 @@ threading.Thread(target=lambda: asyncio.run(launch_telegram())).start()
 while True:
     schedule.run_pending()
     time.sleep(1)
+
+# === STRATÉGIE DE TRADING ===
+def trading_loop():
+    global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
+    if not bot_running:
+        return
+
+    try:
+        df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+        df['ema20'] = df['close'].ewm(span=20).mean()
+        df['ema50'] = df['close'].ewm(span=50).mean()
+        df['sma20'] = df['close'].rolling(window=20).mean()
+        df['upper_bb'] = df['sma20'] + 2 * df['close'].rolling(20).std()
+        df['lower_bb'] = df['sma20'] - 2 * df['close'].rolling(20).std()
+
+        high_price = df['high'].max()
+        low_price = df['low'].min()
+        df['fibo_618'] = low_price + 0.618 * (high_price - low_price)
+
+        last = df.iloc[-1]
+        price = last['close']
+
+        if not active_position:
+            if last['ema20'] > last['ema50'] and price > last['fibo_618'] and price > last['lower_bb']:
+                balance = exchange.fetch_balance()
+                usdt = balance['USDT']['free']
+                qty = round(usdt / price, 1)
+                exchange.create_market_buy_order(symbol, qty)
+                entry_price = price
+                highest_price = price
+                active_position = True
+                last_order_info = {"amount": qty, "entry_price": entry_price}
+                tp = round(price * 1.03, 4)
+                sl = round(price * 0.97, 4)
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},buy,{price},{qty},{tp},{sl}\n")
+                asyncio.run(send_telegram_message(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}"))
+        else:
+            current_price = price
+            highest_price = max(highest_price, current_price)
+            tp = entry_price * 1.03
+            sl = entry_price * 0.97
+            trailing_trigger = entry_price * 1.02
+            trailing_sl = highest_price * 0.993
+            qty = last_order_info['amount']
+            if current_price >= tp:
+                exchange.create_market_sell_order(symbol, qty)
+                trade_wins += 1
+                last_trade_type = "TP"
+                asyncio.run(send_telegram_message(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée."))
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},TP,{current_price},{qty},{tp},{sl}\n")
+                active_position = False
+                trade_count += 1
+            elif current_price <= sl:
+                exchange.create_market_sell_order(symbol, qty)
+                trade_losses += 1
+                last_trade_type = "SL"
+                asyncio.run(send_telegram_message(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée."))
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},SL,{current_price},{qty},{tp},{sl}\n")
+                active_position = False
+                trade_count += 1
+            elif current_price > trailing_trigger and current_price <= trailing_sl:
+                exchange.create_market_sell_order(symbol, qty)
+                last_trade_type = "Trailing"
+                asyncio.run(send_telegram_message(f"🔁 Trailing SL activé à {current_price:.4f} 🛑 Position clôturée."))
+                with open(log_file, 'a') as f:
+                    f.write(f"{datetime.now()},Trailing,{current_price},{qty},{tp},{sl}\n")
+                active_position = False
+                trade_count += 1
+
+    except Exception as e:
+        logging.error(f"Erreur trading_loop : {e}")
+        asyncio.run(send_telegram_message(f"Erreur stratégie : {e}"))
+
+schedule.every(20).seconds.do(trading_loop)
