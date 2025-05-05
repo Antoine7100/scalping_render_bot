@@ -25,7 +25,6 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = "1440739670"
 TELEGRAM_USER_ID = 1440739670
 
-# Supprimer d'anciens webhooks pour éviter les conflits
 try:
     Bot(token=TELEGRAM_BOT_TOKEN).delete_webhook()
 except Exception as e:
@@ -89,7 +88,7 @@ def trades():
     html += "</table>"
     return html
 
-# ⚙️ Ajouter toute la logique du bot, stratégie de trading, fonctions Telegram et lancement
+# === OUTILS ===
 def send_telegram_message_sync(msg):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -222,16 +221,13 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tp = round(entry_price * 1.03, 4)
             sl = round(entry_price * 0.97, 4)
             tendance = "📈 Vers TP" if current_price > entry_price else "📉 Vers SL"
-            msg = f"🟠 Position ouverte
-Entrée : {entry_price:.4f}
-TP : {tp} | SL : {sl}
-Prix actuel : {current_price:.4f} {tendance}"
+            msg = f"🟠 Position ouverte\nEntrée : {entry_price:.4f}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
         else:
             msg = "❌ Aucune position ouverte."
         await update.callback_query.edit_message_text(text=msg)
     except Exception as e:
         logging.error(f"Erreur open_trade_status : {e}")
-        await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
+        await update.callback_query.edit_message_text(text=f"Erreur : {e}")
 
 @restricted
 async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -247,10 +243,7 @@ async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tp = (df['action'] == 'TP').sum()
     sl = (df['action'] == 'SL').sum()
     total = len(df)
-    await update.callback_query.edit_message_text(f"📈 Bilan :
-✅ TP : {tp}
-❌ SL : {sl}
-📦 Total : {total}")
+    await update.callback_query.edit_message_text(f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}")
 
 @restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -295,9 +288,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/myid - Afficher ton ID Telegram",
         "/help - Afficher cette aide"
     ]
-    message = "📋 Commandes disponibles :
-" + "
-".join(commands)
+    message = "📋 Commandes disponibles :\n" + "\n".join(commands)
     await update.message.reply_text(message)
 
 async def launch_telegram():
@@ -318,5 +309,4 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.get_event_loop().run_until_complete(launch_telegram())
-
 
