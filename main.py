@@ -88,23 +88,6 @@ def trades():
     html += "</table>"
     return html
 
-# === OUTILS ===
-def send_telegram_message_sync(msg):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
-        requests.post(url, data=payload)
-    except Exception as e:
-        logging.error(f"Erreur Telegram (sync) : {e}")
-
-def log_trade(row_data):
-    header = "datetime,action,price,qty,take_profit,stop_loss\n"
-    file_exists = os.path.exists(log_file)
-    with open(log_file, 'a') as f:
-        if not file_exists:
-            f.write(header)
-        f.write(",".join(map(str, row_data)) + "\n")
-
 # === STRATÉGIE DE TRADING ===
 def trading_loop():
     global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
@@ -177,6 +160,45 @@ def trading_loop():
 
 schedule.every(20).seconds.do(trading_loop)
 
+# === OUTILS ===
+def send_telegram_message_sync(msg):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
+        requests.post(url, data=payload)
+    except Exception as e:
+        logging.error(f"Erreur Telegram (sync) : {e}")
+
+def log_trade(row_data):
+    header = "datetime,action,price,qty,take_profit,stop_loss\n"
+    file_exists = os.path.exists(log_file)
+    with open(log_file, 'a') as f:
+        if not file_exists:
+            f.write(header)
+        f.write(",".join(map(str, row_data)) + "\n")
+
+# === VÉRIFICATION DES POSITIONS ===
+@restricted
+async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        positions = exchange.fetch_positions()
+        position = next((p for p in positions if p['symbol'] == symbol and p['contracts'] > 0), None)
+
+        if position:
+            entry = position['entryPrice']
+            qty = position['contracts']
+            current_price = exchange.fetch_ticker(symbol)['last']
+            tp = round(entry * 1.03, 4)
+            sl = round(entry * 0.97, 4)
+            tendance = "📈 Vers TP" if current_price > entry else "📉 Vers SL"
+            msg = f"🔠 Position réelle détectée\nEntrée : {entry:.4f}\nQuantité : {qty}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
+        else:
+            msg = "❌ Aucune position ouverte sur Bybit."
+        await update.callback_query.edit_message_text(text=msg)
+    except Exception as e:
+        logging.error(f"Erreur open_trade_status : {e}")
+        await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
+
 # === COMMANDES TELEGRAM ===
 def restricted(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -214,28 +236,6 @@ async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.edit_message_text("Aucune position à clôturer.")
 
 @restricted
-async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        all_positions = exchange.fetch_positions()
-        position = next((p for p in all_positions if p['symbol'] == symbol), None)
-
-        if position and position['contracts'] > 0:
-            entry = position['entryPrice']
-            qty = position['contracts']
-            current_price = exchange.fetch_ticker(symbol)['last']
-            tp = round(entry * 1.03, 4)
-            sl = round(entry * 0.97, 4)
-            tendance = "📈 Vers TP" if current_price > entry else "📉 Vers SL"
-            msg = f"🟠 Position détectée\nEntrée : {entry:.4f}\nQuantité : {qty}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
-        else:
-            msg = "❌ Aucune position ouverte détectée sur Bybit."
-        await update.callback_query.edit_message_text(text=msg)
-    except Exception as e:
-        logging.error(f"Erreur open_trade_status : {e}")
-        await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
-
-
-@restricted
 async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "✅ Bot actif." if bot_running else "⛔ Bot en pause."
     await update.callback_query.edit_message_text(msg)
@@ -249,7 +249,10 @@ async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tp = (df['action'] == 'TP').sum()
     sl = (df['action'] == 'SL').sum()
     total = len(df)
-    await update.callback_query.edit_message_text(f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}")
+    await update.callback_query.edit_message_text(f"📈 Bilan :
+✅ TP : {tp}
+❌ SL : {sl}
+📦 Total : {total}")
 
 @restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -294,9 +297,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/myid - Afficher ton ID Telegram",
         "/help - Afficher cette aide"
     ]
-    message = "📋 Commandes disponibles :\n" + "\n".join(commands)
+    message = "📋 Commandes disponibles :
+" + "
+".join(commands)
     await update.message.reply_text(message)
 
+# === INITIALISATION ===
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app_telegram.add_handler(CommandHandler("startbot", start_bot))
