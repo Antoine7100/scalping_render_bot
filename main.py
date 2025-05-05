@@ -298,7 +298,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/myid - Afficher ton ID Telegram",
         "/help - Afficher cette aide"
     ]
-    message = "📋 Commandes disponibles :
+message = "📋 Commandes disponibles :\n" \
+          "/startbot - Lancer le bot\n" \
+          "/stopbot - Arrêter le bot\n" \
+          "/menu - Afficher le menu de contrôle\n" \
+          "/close - Fermer une position manuellement\n" \
+          "/bilan - Afficher les statistiques de performance\n" \
+          "/myid - Afficher ton ID Telegram\n" \
+          "/help - Afficher cette aide"
+
 " + "
 ".join(commands)
     await update.message.reply_text(message)
