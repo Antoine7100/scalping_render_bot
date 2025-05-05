@@ -297,9 +297,14 @@ async def launch_telegram():
 
     print("✅ Telegram bot en ligne. En attente de commandes...")
     await app_telegram.run_polling()
-threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-threading.Thread(target=lambda: asyncio.run(launch_telegram())).start()
 
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+if __name__ == "__main__":
+    # Lancer Flask dans un thread séparé
+    
+
+    # Exécuter la boucle principale Telegram ici
+    asyncio.run(launch_telegram())
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
