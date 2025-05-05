@@ -33,7 +33,7 @@ exchange = ccxt.bybit({
 })
 
 symbol = "ADA/USDT:USDT"
-leverage = 10
+leverage = 5
 limit = 150
 timeframe = '1m'
 log_file = "trades_log.csv"
@@ -82,23 +82,6 @@ def trades():
         html += f"<tr><td>{row['datetime']}</td><td>{row['action']}</td><td>{row['price']}</td><td>{row['qty']}</td><td>{row['take_profit']}</td><td>{row['stop_loss']}</td></tr>"
     html += "</table>"
     return html
-
-# === OUTILS ===
-def send_telegram_message_sync(msg):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
-        requests.post(url, data=payload)
-    except Exception as e:
-        logging.error(f"Erreur Telegram (sync) : {e}")
-
-def log_trade(row_data):
-    header = "datetime,action,price,qty,take_profit,stop_loss\n"
-    file_exists = os.path.exists(log_file)
-    with open(log_file, 'a') as f:
-        if not file_exists:
-            f.write(header)
-        f.write(",".join(map(str, row_data)) + "\n")
 
 # === STRATÉGIE DE TRADING ===
 def trading_loop():
@@ -172,6 +155,23 @@ def trading_loop():
 
 schedule.every(20).seconds.do(trading_loop)
 
+# === OUTILS ===
+def send_telegram_message_sync(msg):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
+        requests.post(url, data=payload)
+    except Exception as e:
+        logging.error(f"Erreur Telegram (sync) : {e}")
+
+def log_trade(row_data):
+    header = "datetime,action,price,qty,take_profit,stop_loss\n"
+    file_exists = os.path.exists(log_file)
+    with open(log_file, 'a') as f:
+        if not file_exists:
+            f.write(header)
+        f.write(",".join(map(str, row_data)) + "\n")
+
 # === COMMANDES TELEGRAM ===
 def restricted(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -185,13 +185,13 @@ def restricted(func):
 async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
     bot_running = True
-    send_telegram_message_sync("▶️ Bot lancé.")
+    await update.callback_query.edit_message_text("▶️ Bot lancé.")
 
 @restricted
 async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
     bot_running = False
-    send_telegram_message_sync("⏸ Bot arrêté.")
+    await update.callback_query.edit_message_text("⏸ Bot arrêté.")
 
 @restricted
 async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -201,23 +201,44 @@ async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
             qty = last_order_info.get("amount", 0)
             price = exchange.fetch_ticker(symbol)['last']
             exchange.create_market_sell_order(symbol, qty)
-            send_telegram_message_sync(f"❌ Vente forcée à {price:.4f} pour {qty} ADA")
+            active_position = False
+            await update.callback_query.edit_message_text(f"❌ Vente forcée à {price:.4f} pour {qty} ADA")
         except Exception as e:
-            send_telegram_message_sync(f"Erreur force_sell : {e}")
+            await update.callback_query.edit_message_text(f"Erreur force_sell : {e}")
     else:
-        send_telegram_message_sync("Aucune position à clôturer.")
+        await update.callback_query.edit_message_text("Aucune position à clôturer.")
 
 @restricted
 async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if active_position:
-        current_price = exchange.fetch_ticker(symbol)['last']
-        tp = round(entry_price * 1.03, 4)
-        sl = round(entry_price * 0.97, 4)
-        tendance = "📈 Vers TP" if current_price > entry_price else "📉 Vers SL"
-        msg = f"🟠 Position ouverte\nEntrée : {entry_price:.4f}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
-    else:
-        msg = "❌ Aucune position ouverte."
-    send_telegram_message_sync(msg)
+    try:
+        if active_position:
+            current_price = exchange.fetch_ticker(symbol)['last']
+            tp = round(entry_price * 1.03, 4)
+            sl = round(entry_price * 0.97, 4)
+            tendance = "📈 Vers TP" if current_price > entry_price else "📉 Vers SL"
+            msg = f"🟠 Position ouverte\nEntrée : {entry_price:.4f}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
+        else:
+            msg = "❌ Aucune position ouverte."
+        await update.callback_query.edit_message_text(text=msg)
+    except Exception as e:
+        logging.error(f"Erreur open_trade_status : {e}")
+        await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
+
+@restricted
+async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = "✅ Bot actif." if bot_running else "⛔ Bot en pause."
+    await update.callback_query.edit_message_text(msg)
+
+@restricted
+async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not os.path.exists(log_file):
+        await update.callback_query.edit_message_text("Aucun trade enregistré.")
+        return
+    df = pd.read_csv(log_file)
+    tp = (df['action'] == 'TP').sum()
+    sl = (df['action'] == 'SL').sum()
+    total = len(df)
+    await update.callback_query.edit_message_text(f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}")
 
 @restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -249,23 +270,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "bilan":
         await bilan(update, context)
 
-@restricted
-async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "✅ Bot actif." if bot_running else "⛔ Bot en pause."
-    send_telegram_message_sync(msg)
-
-@restricted
-async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not os.path.exists(log_file):
-        send_telegram_message_sync("Aucun trade enregistré.")
-        return
-    df = pd.read_csv(log_file)
-    tp = (df['action'] == 'TP').sum()
-    sl = (df['action'] == 'SL').sum()
-    total = len(df)
-    send_telegram_message_sync(f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}")
-
-# ✅ Commande pour afficher l'ID Telegram
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Ton ID Telegram est : {update.effective_user.id}")
 
@@ -281,7 +285,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     message = "📋 Commandes disponibles :\n" + "\n".join(commands)
     await update.message.reply_text(message)
-
 
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
@@ -301,8 +304,6 @@ if __name__ == "__main__":
     import nest_asyncio
     nest_asyncio.apply()
 
-    # Lancer Flask dans un thread séparé
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-
-    # Lancer Telegram bot avec une boucle compatible Render
     asyncio.get_event_loop().run_until_complete(launch_telegram())
+
