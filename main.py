@@ -298,8 +298,11 @@ async def launch_telegram():
     await app_telegram.run_polling()
 
 if __name__ == "__main__":
+    import nest_asyncio
+    nest_asyncio.apply()
+
     # Lancer Flask dans un thread séparé
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 
-    # Lancer Telegram bot (bloquant dans le thread principal)
-    asyncio.run(launch_telegram())
+    # Lancer Telegram bot avec une boucle compatible Render
+    asyncio.get_event_loop().run_until_complete(launch_telegram())
