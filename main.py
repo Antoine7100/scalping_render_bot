@@ -295,16 +295,13 @@ async def launch_telegram():
     app_telegram.add_handler(CommandHandler("help", help_command))
     app_telegram.add_handler(CallbackQueryHandler(handle_button))
 
-    print("✅ Telegram bot en ligne. En attente de commandes...")
+     print("✅ Telegram bot en ligne. En attente de commandes...")
     await app_telegram.run_polling()
 
 if __name__ == "__main__":
     # Lancer Flask dans un thread séparé
-    
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 
-    # Exécuter la boucle principale Telegram ici
+    # Lancer Telegram bot (bloquant dans le thread principal)
     asyncio.run(launch_telegram())
 
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
