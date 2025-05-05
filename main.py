@@ -285,19 +285,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+
     app_telegram.add_handler(CommandHandler("startbot", start_bot))
     app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
     app_telegram.add_handler(CommandHandler("menu", menu))
     app_telegram.add_handler(CommandHandler("close", force_sell))
     app_telegram.add_handler(CommandHandler("bilan", bilan))
     app_telegram.add_handler(CommandHandler("myid", myid))
-    app_telegram.add_handler(CommandHandler("help", help_command))  # ✅ ici
+    app_telegram.add_handler(CommandHandler("help", help_command))
     app_telegram.add_handler(CallbackQueryHandler(handle_button))
-    await app_telegram.initialize()
-    await app_telegram.start()
-    await app_telegram.updater.start_polling()
-    await app_telegram.updater.idle()
 
+    print("✅ Telegram bot en ligne. En attente de commandes...")
+    await app_telegram.run_polling()
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 threading.Thread(target=lambda: asyncio.run(launch_telegram())).start()
 
