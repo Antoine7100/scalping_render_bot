@@ -10,7 +10,7 @@ import requests
 import numpy as np
 from flask import Flask
 import threading
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import asyncio
 import schedule
@@ -24,6 +24,12 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = "1440739670"
 TELEGRAM_USER_ID = 1440739670
+
+# Supprimer d'anciens webhooks pour éviter les conflits
+try:
+    Bot(token=TELEGRAM_BOT_TOKEN).delete_webhook()
+except Exception as e:
+    logging.warning(f"Impossible de supprimer le webhook : {e}")
 
 exchange = ccxt.bybit({
     'apiKey': api_key,
@@ -82,6 +88,23 @@ def trades():
         html += f"<tr><td>{row['datetime']}</td><td>{row['action']}</td><td>{row['price']}</td><td>{row['qty']}</td><td>{row['take_profit']}</td><td>{row['stop_loss']}</td></tr>"
     html += "</table>"
     return html
+
+# ⚙️ Ajouter toute la logique du bot, stratégie de trading, fonctions Telegram et lancement
+def send_telegram_message_sync(msg):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
+        requests.post(url, data=payload)
+    except Exception as e:
+        logging.error(f"Erreur Telegram (sync) : {e}")
+
+def log_trade(row_data):
+    header = "datetime,action,price,qty,take_profit,stop_loss\n"
+    file_exists = os.path.exists(log_file)
+    with open(log_file, 'a') as f:
+        if not file_exists:
+            f.write(header)
+        f.write(",".join(map(str, row_data)) + "\n")
 
 # === STRATÉGIE DE TRADING ===
 def trading_loop():
@@ -155,23 +178,6 @@ def trading_loop():
 
 schedule.every(20).seconds.do(trading_loop)
 
-# === OUTILS ===
-def send_telegram_message_sync(msg):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
-        requests.post(url, data=payload)
-    except Exception as e:
-        logging.error(f"Erreur Telegram (sync) : {e}")
-
-def log_trade(row_data):
-    header = "datetime,action,price,qty,take_profit,stop_loss\n"
-    file_exists = os.path.exists(log_file)
-    with open(log_file, 'a') as f:
-        if not file_exists:
-            f.write(header)
-        f.write(",".join(map(str, row_data)) + "\n")
-
 # === COMMANDES TELEGRAM ===
 def restricted(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -216,7 +222,10 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tp = round(entry_price * 1.03, 4)
             sl = round(entry_price * 0.97, 4)
             tendance = "📈 Vers TP" if current_price > entry_price else "📉 Vers SL"
-            msg = f"🟠 Position ouverte\nEntrée : {entry_price:.4f}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
+            msg = f"🟠 Position ouverte
+Entrée : {entry_price:.4f}
+TP : {tp} | SL : {sl}
+Prix actuel : {current_price:.4f} {tendance}"
         else:
             msg = "❌ Aucune position ouverte."
         await update.callback_query.edit_message_text(text=msg)
@@ -238,7 +247,10 @@ async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tp = (df['action'] == 'TP').sum()
     sl = (df['action'] == 'SL').sum()
     total = len(df)
-    await update.callback_query.edit_message_text(f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}")
+    await update.callback_query.edit_message_text(f"📈 Bilan :
+✅ TP : {tp}
+❌ SL : {sl}
+📦 Total : {total}")
 
 @restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -283,12 +295,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/myid - Afficher ton ID Telegram",
         "/help - Afficher cette aide"
     ]
-    message = "📋 Commandes disponibles :\n" + "\n".join(commands)
+    message = "📋 Commandes disponibles :
+" + "
+".join(commands)
     await update.message.reply_text(message)
 
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
     app_telegram.add_handler(CommandHandler("startbot", start_bot))
     app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
     app_telegram.add_handler(CommandHandler("menu", menu))
@@ -303,7 +316,7 @@ async def launch_telegram():
 if __name__ == "__main__":
     import nest_asyncio
     nest_asyncio.apply()
-
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.get_event_loop().run_until_complete(launch_telegram())
+
 
