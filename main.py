@@ -199,7 +199,6 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Erreur open_trade_status : {e}")
         await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
 
-# === COMMANDES TELEGRAM ===
 # === DÉCORATEUR RESTRICTED ===
 def restricted(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
