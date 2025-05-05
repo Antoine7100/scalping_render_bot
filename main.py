@@ -1,5 +1,3 @@
-# === BOT DE TRADING TELEGRAM COMPLET ===
-
 import ccxt
 import os
 import pandas as pd
@@ -87,6 +85,15 @@ def trades():
         html += f"<tr><td>{row['datetime']}</td><td>{row['action']}</td><td>{row['price']}</td><td>{row['qty']}</td><td>{row['take_profit']}</td><td>{row['stop_loss']}</td></tr>"
     html += "</table>"
     return html
+
+# === DÉCORATEUR RESTRICTED ===
+def restricted(func):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.effective_user.id != TELEGRAM_USER_ID:
+            await update.message.reply_text("⛔️ Accès refusé.")
+            return
+        return await func(update, context)
+    return wrapper
 
 # === STRATÉGIE DE TRADING ===
 def trading_loop():
@@ -191,15 +198,16 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tp = round(entry * 1.03, 4)
             sl = round(entry * 0.97, 4)
             tendance = "📈 Vers TP" if current_price > entry else "📉 Vers SL"
-            msg = f"🔠 Position réelle détectée\nEntrée : {entry:.4f}\nQuantité : {qty}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
+            msg = f"📊 Position réelle détectée\nEntrée : {entry:.4f}\nQuantité : {qty}\nTP : {tp} | SL : {sl}\n{tendance}"
         else:
             msg = "❌ Aucune position ouverte sur Bybit."
+
         await update.callback_query.edit_message_text(text=msg)
     except Exception as e:
         logging.error(f"Erreur open_trade_status : {e}")
         await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
 
-# === DÉCORATEUR RESTRICTED ===
+# === COMMANDES TELEGRAM ===
 def restricted(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_user.id != TELEGRAM_USER_ID:
@@ -208,7 +216,6 @@ def restricted(func):
         return await func(update, context)
     return wrapper
 
-# === COMMANDES TELEGRAM ===
 @restricted
 async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
