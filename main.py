@@ -279,9 +279,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/myid - Afficher ton ID Telegram",
         "/help - Afficher cette aide"
     ]
-    await update.message.reply_text("📋 Commandes disponibles :
+    message = "📋 Commandes disponibles :
 " + "
-".join(commands))
+".join(commands)
+    await update.message.reply_text(message))
 
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
@@ -297,7 +298,6 @@ async def launch_telegram():
     await app_telegram.start()
     await app_telegram.updater.start_polling()
     await app_telegram.updater.idle()
-
 
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
 threading.Thread(target=lambda: asyncio.run(launch_telegram())).start()
