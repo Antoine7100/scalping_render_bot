@@ -216,24 +216,24 @@ async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Nouvelle vérification en interrogeant l'API de Bybit
-        response = exchange.private_get_position_list({'symbol': symbol.replace("/", "").replace(":USDT", "")})
-        position = response['result'][0] if response['result'] else None
-        qty = float(position['size']) if position else 0
-        entry = float(position['entry_price']) if position else 0
+        all_positions = exchange.fetch_positions()
+        position = next((p for p in all_positions if p['symbol'] == symbol), None)
 
-        if qty > 0:
+        if position and position['contracts'] > 0:
+            entry = position['entryPrice']
+            qty = position['contracts']
             current_price = exchange.fetch_ticker(symbol)['last']
             tp = round(entry * 1.03, 4)
             sl = round(entry * 0.97, 4)
             tendance = "📈 Vers TP" if current_price > entry else "📉 Vers SL"
-            msg = f"🟠 Position réelle détectée\nEntrée : {entry:.4f}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
+            msg = f"🟠 Position détectée\nEntrée : {entry:.4f}\nQuantité : {qty}\nTP : {tp} | SL : {sl}\nPrix actuel : {current_price:.4f} {tendance}"
         else:
-            msg = "❌ Aucune position ouverte sur Bybit."
+            msg = "❌ Aucune position ouverte détectée sur Bybit."
         await update.callback_query.edit_message_text(text=msg)
     except Exception as e:
         logging.error(f"Erreur open_trade_status : {e}")
         await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
+
 
 @restricted
 async def status_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
