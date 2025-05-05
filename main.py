@@ -200,6 +200,7 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
 
 # === COMMANDES TELEGRAM ===
+# === DÉCORATEUR RESTRICTED ===
 def restricted(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_user.id != TELEGRAM_USER_ID:
@@ -208,6 +209,7 @@ def restricted(func):
         return await func(update, context)
     return wrapper
 
+# === COMMANDES TELEGRAM ===
 @restricted
 async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
@@ -253,8 +255,6 @@ async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}"
     )
 
-
-
 @restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -289,17 +289,6 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Ton ID Telegram est : {update.effective_user.id}")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    commands = [
-        "/startbot - Lancer le bot",
-        "/stopbot - Arrêter le bot",
-        "/menu - Afficher le menu de contrôle",
-        "/close - Fermer une position manuellement",
-        "/bilan - Afficher les statistiques de performance",
-        "/myid - Afficher ton ID Telegram",
-        "/help - Afficher cette aide"
-    ]
-@restricted
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = "\n".join([
         "📋 Commandes disponibles :",
         "/startbot - Lancer le bot",
@@ -331,4 +320,3 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.get_event_loop().run_until_complete(launch_telegram())
-
