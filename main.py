@@ -249,10 +249,8 @@ async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tp = (df['action'] == 'TP').sum()
     sl = (df['action'] == 'SL').sum()
     total = len(df)
-    await update.callback_query.edit_message_text(f"📈 Bilan :
-✅ TP : {tp}
-❌ SL : {sl}
-📦 Total : {total}")
+  await update.callback_query.edit_message_text(f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}")
+
 
 @restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
