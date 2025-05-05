@@ -279,10 +279,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/myid - Afficher ton ID Telegram",
         "/help - Afficher cette aide"
     ]
-    message = "📋 Commandes disponibles :
-" + "
-".join(commands)
-    await update.message.reply_text(message))
+    message = "📋 Commandes disponibles :\n" + "\n".join(commands)
+    await update.message.reply_text(message)
+
 
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
