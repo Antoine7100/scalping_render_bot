@@ -106,78 +106,42 @@ def trading_loop():
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df['ema20'] = df['close'].ewm(span=20).mean()
         df['ema50'] = df['close'].ewm(span=50).mean()
-        df['sma20'] = df['close'].rolling(window=20).mean()
-        df['upper_bb'] = df['sma20'] + 2 * df['close'].rolling(20).std()
-        df['lower_bb'] = df['sma20'] - 2 * df['close'].rolling(20).std()
-
-        # Calcul du RSI et de l'ATR
         df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=14).mean() /
                                         df['close'].diff().lt(0).rolling(window=14).mean())))
-        df['atr'] = df['high'] - df['low']  # Simple ATR pour démonstration
-        atr_multiple = 2  # Facteur de multiplication de l'ATR pour SL et TP
-        sl = entry_price - atr_multiple * df['atr'].iloc[-1]
-        tp = entry_price + atr_multiple * df['atr'].iloc[-1]
-
-        high_price = df['high'].max()
-        low_price = df['low'].min()
-        df['fibo_618'] = low_price + 0.618 * (high_price - low_price)
+        df['atr'] = df['high'] - df['low']
+        
         last = df.iloc[-1]
         price = last['close']
+        sl = entry_price - 2 * last['atr']  # SL basé sur ATR * 2 pour être plus agressif
+        tp = entry_price + 2 * last['atr']  # TP basé sur ATR * 2
 
-        # Conditions de trading basées sur le RSI
+        # Conditions de trading simplifiées pour un trading plus agressif
         if not active_position:
-            if last['rsi'] < 30:  # Survente
-                if last['ema20'] > last['ema50'] and price > last['fibo_618'] and price > last['lower_bb']:
-                    balance = exchange.fetch_balance()
-                    usdt = balance['USDT']['free']
-                    qty = round((usdt * 0.01) / price, 1)  # Position de base
-                    position_size = round((usdt * df['atr'].iloc[-1] / price), 1)  # Ajuster la taille avec l'ATR
-                    exchange.create_market_buy_order(symbol, position_size)
-                    entry_price = price
-                    highest_price = price
-                    active_position = True
-                    last_order_info = {"amount": position_size, "entry_price": entry_price}
-                    tp = round(price * 1.03, 4)
-                    sl = round(price * 0.97, 4)
-                    log_trade([datetime.now(), "buy", price, position_size, tp, sl])
-                    send_telegram_message_sync(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}")
-        else:
-            current_price = price
-            highest_price = max(highest_price, current_price)
-            tp = entry_price * 1.03
-            sl = entry_price * 0.97
-            trailing_stop = entry_price + df['atr'].iloc[-1] * 2  # Trailing stop ajusté
-            qty = last_order_info['amount']
+            # Acheter si RSI < 45 et EMA20 est proche de EMA50 (98%)
+            if last['rsi'] < 45 and last['ema20'] > 0.98 * last['ema50']:  # RSI plus élevé et EMA proche
+                balance = exchange.fetch_balance()
+                usdt = balance['USDT']['free']
+                position_size = round((usdt * 0.02) / price, 1)  # Taille de position augmentée (2% du solde)
+                exchange.create_market_buy_order(symbol, position_size)
+                entry_price = price
+                highest_price = price
+                active_position = True
+                last_order_info = {"amount": position_size, "entry_price": entry_price}
+                log_trade([datetime.now(), "buy", price, position_size, tp, sl])
+                send_telegram_message_sync(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}")
+        elif last['rsi'] > 55 and price < entry_price:  # RSI > 55 et prix baissé (prise de bénéfice)
+            exchange.create_market_sell_order(symbol, last_order_info['amount'])
+            trade_losses += 1
+            send_telegram_message_sync(f"⛔️ SL touché à {price:.4f} ❌ Position coupée.")
+            active_position = False
+            trade_count += 1
 
-            if current_price >= tp:
-                exchange.create_market_sell_order(symbol, qty)
-                trade_wins += 1
-                last_trade_type = "TP"
-                send_telegram_message_sync(f"✅ TP atteint à {current_price:.4f} 💰 Position fermée.")
-                log_trade([datetime.now(), "TP", current_price, qty, tp, sl])
-                active_position = False
-                trade_count += 1
-            elif current_price <= sl:
-                exchange.create_market_sell_order(symbol, qty)
-                trade_losses += 1
-                last_trade_type = "SL"
-                send_telegram_message_sync(f"⛔️ SL touché à {current_price:.4f} ❌ Position coupée.")
-                log_trade([datetime.now(), "SL", current_price, qty, tp, sl])
-                active_position = False
-                trade_count += 1
-            elif current_price > trailing_stop:
-                trailing_stop = current_price  # Ajuster le trailing stop si le prix monte
-                exchange.create_market_sell_order(symbol, qty)
-                last_trade_type = "Trailing"
-                send_telegram_message_sync(f"🔁 Trailing SL activé à {current_price:.4f} 🛑 Position clôturée.")
-                log_trade([datetime.now(), "Trailing", current_price, qty, tp, sl])
-                active_position = False
-                trade_count += 1
     except Exception as e:
         logging.error(f"Erreur trading_loop : {e}")
         send_telegram_message_sync(f"Erreur stratégie : {e}")
 
-schedule.every(20).seconds.do(trading_loop)
+schedule.every(10).seconds.do(trading_loop)  # Vérifie plus fréquemment les opportunités
+
 
 # === OUTILS ===
 import time
