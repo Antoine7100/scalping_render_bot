@@ -235,6 +235,20 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Ton ID Telegram est : {update.effective_user.id}")
 
 @restricted
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = "\n".join([
+        "📋 Commandes disponibles :",
+        "/startbot - Lancer le bot",
+        "/stopbot - Arrêter le bot",
+        "/menu - Afficher le menu de contrôle",
+        "/close - Fermer une position manuellement",
+        "/bilan - Afficher les statistiques de performance",
+        "/myid - Afficher ton ID Telegram",
+        "/help - Afficher cette aide"
+    ])
+    await update.message.reply_text(message)
+
+@restricted
 async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
     bot_running = True
@@ -245,7 +259,6 @@ async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
     bot_running = False
     await update.callback_query.edit_message_text("⏸ Bot arrêté.")
-
 
 @restricted
 async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
