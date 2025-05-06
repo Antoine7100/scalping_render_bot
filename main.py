@@ -168,13 +168,24 @@ def trading_loop():
 schedule.every(20).seconds.do(trading_loop)
 
 # === OUTILS ===
+import time
+
 def send_telegram_message_sync(msg):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
-        requests.post(url, data=payload)
-    except Exception as e:
-        logging.error(f"Erreur Telegram (sync) : {e}")
+    retries = 5  # Nombre de tentatives en cas d'échec
+    for attempt in range(retries):
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
+            response = requests.post(url, data=payload)
+            # Vérification du code de réponse HTTP
+            if response.status_code == 200:
+                return  # Message envoyé avec succès, on quitte la fonction
+            else:
+                logging.error(f"Erreur lors de l'envoi du message : {response.text}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Erreur de connexion Telegram (tentative {attempt + 1}/{retries}) : {e}")
+        time.sleep(2)  # Attendre 2 secondes avant de réessayer
+    logging.error("Impossible d'envoyer le message après plusieurs tentatives.")
 
 def log_trade(row_data):
     header = "datetime,action,price,qty,take_profit,stop_loss\n"
@@ -208,14 +219,6 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.edit_message_text(text=f"Erreur lors de la récupération de la position : {e}")
 
 # === COMMANDES TELEGRAM ===
-def restricted(func):
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.effective_user.id != TELEGRAM_USER_ID:
-            await update.message.reply_text("⛔️ Accès refusé.")
-            return
-        return await func(update, context)
-    return wrapper
-
 @restricted
 async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
@@ -267,9 +270,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("▶️ Lancer le bot", callback_data='startbot'),
          InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
         [InlineKeyboardButton("📊 Statut", callback_data='status'),
-         InlineKeyboardButton("🔍 Trade en cours", callback_data='open_trade')],
-        [InlineKeyboardButton("❌ Fermer position", callback_data='close')],
-        [InlineKeyboardButton("📈 Bilan", callback_data='bilan')]
+         InlineKeyboardButton("🔍 Trade en cours", callback_data='open_trade')]],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
@@ -291,23 +292,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "bilan":
         await bilan(update, context)
 
-async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Ton ID Telegram est : {update.effective_user.id}")
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = "\n".join([
-        "📋 Commandes disponibles :",
-        "/startbot - Lancer le bot",
-        "/stopbot - Arrêter le bot",
-        "/menu - Afficher le menu de contrôle",
-        "/close - Fermer une position manuellement",
-        "/bilan - Afficher les statistiques de performance",
-        "/myid - Afficher ton ID Telegram",
-        "/help - Afficher cette aide"
-    ])
-    await update.message.reply_text(message)
-
-# === INITIALISATION ===
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app_telegram.add_handler(CommandHandler("startbot", start_bot))
@@ -326,3 +310,4 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.get_event_loop().run_until_complete(launch_telegram())
+
