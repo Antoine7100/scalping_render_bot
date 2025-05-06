@@ -300,9 +300,12 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
         [InlineKeyboardButton("📊 Statut", callback_data='status'),
          InlineKeyboardButton("🔍 Trade en cours", callback_data='open_trade')],
+        [InlineKeyboardButton("📈 Bilan", callback_data='bilan')],  # Bilan ajouté
+        [InlineKeyboardButton("❌ Fermer position", callback_data='close')]  # Fermer position ajouté
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
+
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
