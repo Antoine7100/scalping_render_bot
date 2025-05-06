@@ -109,33 +109,44 @@ def trading_loop():
         df['sma20'] = df['close'].rolling(window=20).mean()
         df['upper_bb'] = df['sma20'] + 2 * df['close'].rolling(20).std()
         df['lower_bb'] = df['sma20'] - 2 * df['close'].rolling(20).std()
+
+        # Calcul du RSI et de l'ATR
+        df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=14).mean() /
+                                        df['close'].diff().lt(0).rolling(window=14).mean())))
+        df['atr'] = df['high'] - df['low']  # Simple ATR pour démonstration
+        atr_multiple = 2  # Facteur de multiplication de l'ATR pour SL et TP
+        sl = entry_price - atr_multiple * df['atr'].iloc[-1]
+        tp = entry_price + atr_multiple * df['atr'].iloc[-1]
+
         high_price = df['high'].max()
         low_price = df['low'].min()
         df['fibo_618'] = low_price + 0.618 * (high_price - low_price)
         last = df.iloc[-1]
         price = last['close']
 
+        # Conditions de trading basées sur le RSI
         if not active_position:
-            if last['ema20'] > last['ema50'] and price > last['fibo_618'] and price > last['lower_bb']:
-                balance = exchange.fetch_balance()
-                usdt = balance['USDT']['free']
-                qty = round((usdt * 0.99) / price, 1)
-                exchange.create_market_buy_order(symbol, qty)
-                entry_price = price
-                highest_price = price
-                active_position = True
-                last_order_info = {"amount": qty, "entry_price": entry_price}
-                tp = round(price * 1.03, 4)
-                sl = round(price * 0.97, 4)
-                log_trade([datetime.now(), "buy", price, qty, tp, sl])
-                send_telegram_message_sync(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}")
+            if last['rsi'] < 30:  # Survente
+                if last['ema20'] > last['ema50'] and price > last['fibo_618'] and price > last['lower_bb']:
+                    balance = exchange.fetch_balance()
+                    usdt = balance['USDT']['free']
+                    qty = round((usdt * 0.01) / price, 1)  # Position de base
+                    position_size = round((usdt * df['atr'].iloc[-1] / price), 1)  # Ajuster la taille avec l'ATR
+                    exchange.create_market_buy_order(symbol, position_size)
+                    entry_price = price
+                    highest_price = price
+                    active_position = True
+                    last_order_info = {"amount": position_size, "entry_price": entry_price}
+                    tp = round(price * 1.03, 4)
+                    sl = round(price * 0.97, 4)
+                    log_trade([datetime.now(), "buy", price, position_size, tp, sl])
+                    send_telegram_message_sync(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}")
         else:
             current_price = price
             highest_price = max(highest_price, current_price)
             tp = entry_price * 1.03
             sl = entry_price * 0.97
-            trailing_trigger = entry_price * 1.02
-            trailing_sl = highest_price * 0.99
+            trailing_stop = entry_price + df['atr'].iloc[-1] * 2  # Trailing stop ajusté
             qty = last_order_info['amount']
 
             if current_price >= tp:
@@ -154,7 +165,8 @@ def trading_loop():
                 log_trade([datetime.now(), "SL", current_price, qty, tp, sl])
                 active_position = False
                 trade_count += 1
-            elif current_price > trailing_trigger and current_price <= trailing_sl:
+            elif current_price > trailing_stop:
+                trailing_stop = current_price  # Ajuster le trailing stop si le prix monte
                 exchange.create_market_sell_order(symbol, qty)
                 last_trade_type = "Trailing"
                 send_telegram_message_sync(f"🔁 Trailing SL activé à {current_price:.4f} 🛑 Position clôturée.")
@@ -171,20 +183,19 @@ schedule.every(20).seconds.do(trading_loop)
 import time
 
 def send_telegram_message_sync(msg):
-    retries = 5  # Nombre de tentatives en cas d'échec
+    retries = 3  # Nombre de tentatives
     for attempt in range(retries):
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
             payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": constants.ParseMode.HTML}
             response = requests.post(url, data=payload)
-            # Vérification du code de réponse HTTP
             if response.status_code == 200:
-                return  # Message envoyé avec succès, on quitte la fonction
+                return
             else:
                 logging.error(f"Erreur lors de l'envoi du message : {response.text}")
         except requests.exceptions.RequestException as e:
             logging.error(f"Erreur de connexion Telegram (tentative {attempt + 1}/{retries}) : {e}")
-        time.sleep(2)  # Attendre 2 secondes avant de réessayer
+        time.sleep(2)
     logging.error("Impossible d'envoyer le message après plusieurs tentatives.")
 
 def log_trade(row_data):
@@ -270,7 +281,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("▶️ Lancer le bot", callback_data='startbot'),
          InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
         [InlineKeyboardButton("📊 Statut", callback_data='status'),
-         InlineKeyboardButton("🔍 Trade en cours", callback_data='open_trade')],
+         InlineKeyboardButton("🔍 Trade en cours", callback_data='open_trade')]],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
@@ -310,4 +321,5 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     asyncio.get_event_loop().run_until_complete(launch_telegram())
+
 
