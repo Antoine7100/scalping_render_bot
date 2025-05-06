@@ -231,6 +231,10 @@ async def open_trade_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # === COMMANDES TELEGRAM ===
 @restricted
+async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Ton ID Telegram est : {update.effective_user.id}")
+
+@restricted
 async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
     bot_running = True
@@ -241,6 +245,7 @@ async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_running
     bot_running = False
     await update.callback_query.edit_message_text("⏸ Bot arrêté.")
+
 
 @restricted
 async def force_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
