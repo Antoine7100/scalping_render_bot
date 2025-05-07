@@ -12,6 +12,8 @@ import numpy as np
 import asyncio
 import schedule
 from threading import Thread
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
+from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -247,6 +249,8 @@ async def bilan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📈 Bilan :\n✅ TP : {tp}\n❌ SL : {sl}\n📦 Total : {total}"
     )
 
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+
 @restricted
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -254,16 +258,16 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("⏸ Stopper le bot", callback_data='stopbot')],
         [InlineKeyboardButton("📊 Statut", callback_data='status'),
          InlineKeyboardButton("🔍 Trade en cours", callback_data='open_trade')],
-        [InlineKeyboardButton("📈 Bilan", callback_data='bilan')],  # Bilan ajouté
-        [InlineKeyboardButton("❌ Fermer position", callback_data='close')]  # Fermer position ajouté
+        [InlineKeyboardButton("📈 Bilan", callback_data='bilan')],
+        [InlineKeyboardButton("❌ Fermer position", callback_data='close')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
 
-
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # Important pour éviter les erreurs de Telegram
+
     data = query.data
     if data == "startbot":
         await start_bot(update, context)
@@ -277,6 +281,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await open_trade_status(update, context)
     elif data == "bilan":
         await bilan(update, context)
+
 
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
