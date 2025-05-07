@@ -63,6 +63,7 @@ async def start_telegram_bot():
 webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
 await application.bot.set_webhook(url=webhook_url)
 
+
 await application.start()
 await application.updater.start_webhook(
     listen="0.0.0.0",
