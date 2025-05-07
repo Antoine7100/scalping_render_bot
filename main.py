@@ -48,14 +48,29 @@ app = Flask(__name__)
 def home():
     return "Bot actif."
 
+@app.route("/status")
+def status():
+    return "Bot actif et fonctionnel", 200
+
+
 async def start_telegram_bot():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     await application.initialize()
     application.add_handler(CommandHandler("start", lambda update, context: update.message.reply_text("Bot actif!")))
     application.add_handler(CommandHandler("stop", lambda update, context: update.message.reply_text("Bot arrêté.")))
     application.add_handler(CommandHandler("status", lambda update, context: update.message.reply_text("Le bot est actif." if bot_running else "Le bot est arrêté.")))
-    await application.start()
-    await application.updater.start_polling()
+  # Définir l'URL du webhook en fonction de l'hôte externe
+webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
+await application.bot.set_webhook(url=webhook_url)
+
+await application.start()
+await application.updater.start_webhook(
+    listen="0.0.0.0",
+    port=int(os.getenv("PORT", 10000)),
+    url_path=f"/bot{TELEGRAM_BOT_TOKEN}",
+    webhook_url=webhook_url
+)
+
 
 async def run_server():
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
@@ -300,8 +315,12 @@ async def launch_telegram():
 
 if __name__ == "__main__":
     import nest_asyncio
+    from waitress import serve
     nest_asyncio.apply()
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+    
+    # Lancer le serveur Flask avec Waitress pour la production
+    threading.Thread(target=lambda: serve(app, host="0.0.0.0", port=10000)).start()
     asyncio.get_event_loop().run_until_complete(launch_telegram())
+
 
 
