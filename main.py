@@ -48,6 +48,7 @@ def home():
 
 async def start_telegram_bot():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    await application.initialize()
     application.add_handler(CommandHandler("start", lambda update, context: update.message.reply_text("Bot actif!")))
     application.add_handler(CommandHandler("stop", lambda update, context: update.message.reply_text("Bot arrêté.")))
     application.add_handler(CommandHandler("status", lambda update, context: update.message.reply_text("Le bot est actif." if bot_running else "Le bot est arrêté.")))
