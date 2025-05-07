@@ -1,32 +1,21 @@
-import ccxt
 import os
-import pandas as pd
-import time
-import logging
-from datetime import datetime
 import requests
-import numpy as np
-from flask import Flask
-import threading
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-import asyncio
-import schedule
-import shutil
+import logging
+import subprocess
+from telegram import Bot
 
-# Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-api_key = os.getenv("BYBIT_API_KEY")
-api_secret = os.getenv("BYBIT_API_SECRET")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = "1440739670"
-TELEGRAM_USER_ID = 1440739670
-
-import os
-import requests
-import logging
-from telegram import Bot
+# Arrêter tous les processus du bot en cours
+try:
+    result = subprocess.run(['pgrep', '-f', 'python'], capture_output=True, text=True)
+    pids = result.stdout.splitlines()
+    for pid in pids:
+        if pid.isdigit():
+            subprocess.run(['kill', '-9', pid])
+            logging.info(f"Processus bot arrêté : {pid}")
+except Exception as e:
+    logging.warning(f"Erreur lors de l'arrêt des processus bot : {e}")
 
 # Supprimer automatiquement le webhook au démarrage
 try:
@@ -44,12 +33,32 @@ except Exception as e:
     logging.warning(f"Impossible de supprimer le webhook via la bibliothèque Telegram : {e}")
 
 
+import ccxt
+import pandas as pd
+import time
+from datetime import datetime
+import numpy as np
+from flask import Flask
+import threading
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import asyncio
+import schedule
+import shutil
+
+api_key = os.getenv("BYBIT_API_KEY")
+api_secret = os.getenv("BYBIT_API_SECRET")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = "1440739670"
+TELEGRAM_USER_ID = 1440739670
+
 exchange = ccxt.bybit({
     'apiKey': api_key,
     'secret': api_secret,
     'enableRateLimit': True,
     'options': {'defaultType': 'future'}
 })
+
 
 symbol = "ADA/USDT:USDT"
 leverage = 5
