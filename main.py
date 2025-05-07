@@ -1,69 +1,19 @@
 import os
 import requests
 import logging
-import subprocess
 import time
+from threading import Thread
+from flask import Flask
 from telegram import Bot
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-
-lock_file = "/tmp/bot_running.lock"
-
-# Vérifier si le bot est déjà en cours d'exécution
-if os.path.exists(lock_file):
-    logging.warning("Une instance du bot est déjà en cours. Fermeture pour éviter les conflits.")
-    exit(0)
-
-# Créer un fichier de verrou pour indiquer que le bot est en cours
-with open(lock_file, 'w') as f:
-    f.write(str(os.getpid()))
-
-# Vérification des processus liés au bot Telegram
-try:
-    result = subprocess.run(['pgrep', '-fl', 'python main.py'], capture_output=True, text=True)
-    pids = result.stdout.splitlines()
-    for line in pids:
-        if 'python' in line:
-            pid = line.split()[0]
-            if pid.isdigit():
-                logging.info(f"Arrêt du processus bot existant : {pid}")
-                subprocess.run(['kill', pid])
-                time.sleep(2)  # Pause pour laisser le processus se fermer correctement
-                # Vérification si le processus est toujours actif
-                check = subprocess.run(['pgrep', '-f', 'python main.py'], capture_output=True, text=True)
-                if pid in check.stdout:
-                    logging.warning(f"Le processus {pid} est toujours actif, tentative d'arrêt forcé.")
-                    subprocess.run(['kill', '-9', pid])
-except Exception as e:
-    logging.warning(f"Erreur lors de l'arrêt des processus bot spécifiques : {e}")
-
-# Supprimer automatiquement le webhook au démarrage
-try:
-    response = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteWebhook")
-    if response.status_code == 200:
-        logging.info("Webhook supprimé avec succès.")
-    else:
-        logging.warning(f"Échec de la suppression du webhook : {response.text}")
-except Exception as e:
-    logging.error(f"Erreur lors de la suppression du webhook : {e}")
-
-try:
-    Bot(token=TELEGRAM_BOT_TOKEN).delete_webhook()
-except Exception as e:
-    logging.warning(f"Impossible de supprimer le webhook via la bibliothèque Telegram : {e}")
-
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import ccxt
 import pandas as pd
-import time
 from datetime import datetime
 import numpy as np
-from flask import Flask
-import threading
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import asyncio
 import schedule
-import shutil
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
@@ -78,66 +28,43 @@ exchange = ccxt.bybit({
     'options': {'defaultType': 'future'}
 })
 
-# Supprimer le fichier de verrou à la fin de l'exécution
+symbol = "ADA/USDT:USDT"
+leverage = 5
+limit = 150
+timeframe = '1m'
+log_file = "trades_log.csv"
+
+active_position = False
+entry_price = 0.0
+highest_price = 0.0
+bot_running = True
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot actif."
+
+async def start_bot():
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    application.run_polling()
+
+Thread(target=lambda: asyncio.run(start_bot()), daemon=True).start()
+
+# === Gestion des conflits de processus ===
+lock_file = "/tmp/bot_running.lock"
+if os.path.exists(lock_file):
+    logging.warning("Une instance du bot est déjà en cours. Fermeture pour éviter les conflits.")
+    exit(0)
+with open(lock_file, 'w') as f:
+    f.write(str(os.getpid()))
+
 def remove_lock():
     if os.path.exists(lock_file):
         os.remove(lock_file)
 
 import atexit
 atexit.register(remove_lock)
-
-
-
-symbol = "ADA/USDT:USDT"
-leverage = 5
-limit = 150
-timeframe = '1m'
-log_file = "trades_log.csv"
-backup_dir = "log_backups"
-os.makedirs(backup_dir, exist_ok=True)
-
-active_position = False
-entry_price = 0.0
-highest_price = 0.0
-last_order_info = {}
-bot_running = True
-trade_count = 0
-trade_wins = 0
-trade_losses = 0
-last_trade_type = ""
-
-app = Flask(__name__)
-
-@app.route("/")
-def index():
-    return "<h2>Bot actif - Voir /status et /trades</h2>"
-
-@app.route("/status")
-def status():
-    if active_position:
-        tp = round(entry_price * 1.03, 4)
-        sl = round(entry_price * 0.97, 4)
-        html = f"<ul><li>✅ Position ouverte</li><li>💰 Entrée : {entry_price}</li><li>📈 Haut : {highest_price}</li><li>TP : {tp} | SL : {sl}</li></ul>"
-    else:
-        html = "<ul><li>❌ Aucune position ouverte</li></ul>"
-    stats = f"<ul><li>Total trades : {trade_count}</li><li>✅ Gagnants : {trade_wins}</li><li>❌ Perdants : {trade_losses}</li><li>Dernier trade : {last_trade_type}</li></ul>"
-    return f"<h2>Status Bot</h2>{html}<h3>Performance</h3>{stats}"
-
-@app.route("/trades")
-def trades():
-    if not os.path.exists(log_file):
-        return "<h2>Aucun trade enregistré.</h2>"
-    df = pd.read_csv(log_file)
-    df['datetime'] = pd.to_datetime(df['datetime'])
-    today = datetime.now().date()
-    today_trades = df[df['datetime'].dt.date == today]
-    if today_trades.empty:
-        return "<h2>Aucun trade exécuté aujourd'hui.</h2>"
-    html = "<table border='1'><tr><th>Date</th><th>Action</th><th>Prix</th><th>Qté</th><th>TP</th><th>SL</th></tr>"
-    for _, row in today_trades.iterrows():
-        html += f"<tr><td>{row['datetime']}</td><td>{row['action']}</td><td>{row['price']}</td><td>{row['qty']}</td><td>{row['take_profit']}</td><td>{row['stop_loss']}</td></tr>"
-    html += "</table>"
-    return html
 
 # === DÉCORATEUR RESTRICTED ===
 def restricted(func):
@@ -150,70 +77,42 @@ def restricted(func):
 
 # === STRATÉGIE DE TRADING ===
 def trading_loop():
-    global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
-    if not bot_running:
-        return
-
-    symbols = ["ADA/USDT:USDT", "DOGE/USDT:USDT"]
-
+    global active_position, entry_price, highest_price
     try:
-        for symbol in symbols:
-            logging.info(f"Récupération des données pour {symbol}")
-            df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-            if df.empty:
-                logging.warning(f"Aucune donnée récupérée pour {symbol}")
-                continue
+        last = df.iloc[-1]
+        price = last['close']
 
-            # Indicateurs techniques ultra-agressifs
-            df['ema5'] = df['close'].ewm(span=5).mean()
-            df['ema20'] = df['close'].ewm(span=20).mean()
-            df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=5).mean() /
-                                            df['close'].diff().lt(0).rolling(window=5).mean())))
-            df['stoch_rsi'] = (df['rsi'] - df['rsi'].rolling(window=14).min()) / (df['rsi'].rolling(window=14).max() - df['rsi'].rolling(window=14).min())
-            df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
-            df['signal'] = df['macd'].ewm(span=4).mean()
-            df['atr'] = df['high'] - df['low']
+        df['ema5'] = df['close'].ewm(span=5).mean()
+        df['ema20'] = df['close'].ewm(span=20).mean()
+        df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=5).mean() / df['close'].diff().lt(0).rolling(window=5).mean())))
+        df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
+        df['signal'] = df['macd'].ewm(span=4).mean()
+        df['atr'] = df['high'] - df['low']
 
-            last = df.iloc[-1]
-            price = last['close']
-            sl = entry_price - 1.5 * last['atr']
-            tp = entry_price + 1.5 * last['atr']
-
-            logging.info(f"{symbol} | Prix: {price} | RSI: {last['rsi']:.2f} | Stoch RSI: {last['stoch_rsi']:.2f} | MACD: {last['macd']:.2f} | Signal: {last['signal']:.2f}")
-
-            # Trading ultra-agressif : Achat si RSI < 50 ou Stoch RSI < 0.2
-            if not active_position or last['rsi'] < 50 or last['stoch_rsi'] < 0.2:
-                if last['macd'] > last['signal']:
-                    logging.info(f"Condition d'achat remplie pour {symbol}")
-                    balance = exchange.fetch_balance()
-                    usdt = balance['USDT']['free']
-                    position_size = round((usdt * 0.03) / price, 1)
-                    exchange.create_market_buy_order(symbol, position_size)
-                    entry_price = price
-                    highest_price = price
-                    active_position = True
-                    last_order_info = {"amount": position_size, "entry_price": entry_price}
-                    log_trade([datetime.now(), f"buy {symbol}", price, position_size, tp, sl])
-                    send_telegram_message_sync(f"🟢 Achat {symbol} à {entry_price:.4f} | TP: {tp} | SL: {sl}")
-                else:
-                    logging.info(f"Condition d'achat non remplie pour {symbol}")
-            elif last['rsi'] > 50 or last['stoch_rsi'] > 0.8:
-                if last['macd'] < last['signal']:
-                    logging.info(f"Condition de vente remplie pour {symbol}")
-                    exchange.create_market_sell_order(symbol, last_order_info['amount'])
-                    trade_losses += 1
-                    send_telegram_message_sync(f"⛔️ SL touché à {price:.4f} sur {symbol} ❌ Position coupée.")
-                    active_position = False
-                    trade_count += 1
-
+        if not active_position and last['rsi'] < 50 and last['macd'] > last['signal']:
+            balance = exchange.fetch_balance()
+            usdt = balance['USDT']['free']
+            position_size = round((usdt * 0.03) / price, 1)
+            exchange.create_market_buy_order(symbol, position_size)
+            entry_price = price
+            highest_price = price
+            active_position = True
+            logging.info(f"Achat {symbol} à {entry_price:.4f}")
+        elif active_position and (last['rsi'] > 60 or last['macd'] < last['signal']):
+            exchange.create_market_sell_order(symbol, position_size)
+            active_position = False
+            logging.info(f"Vente {symbol} à {price:.4f}")
     except Exception as e:
-        logging.error(f"Erreur trading_loop : {e}")
-        send_telegram_message_sync(f"Erreur stratégie : {e}")
+        logging.error(f"Erreur dans la stratégie : {e}")
 
-schedule.every(2).seconds.do(trading_loop)
+schedule.every(5).seconds.do(trading_loop)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
 
 
 # === OUTILS ===
