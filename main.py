@@ -100,45 +100,49 @@ def trading_loop():
     global active_position, entry_price, highest_price, last_order_info, trade_count, trade_wins, trade_losses, last_trade_type
     if not bot_running:
         return
+
+    symbols = ["ADA/USDT:USDT", "DOGE/USDT:USDT"]  # Liste des marchés à surveiller
+
     try:
-        df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        for symbol in symbols:
+            df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-        # Calcul des indicateurs
-        df['ema20'] = df['close'].ewm(span=20).mean()
-        df['ema50'] = df['close'].ewm(span=50).mean()
-        df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=7).mean() /
-                                        df['close'].diff().lt(0).rolling(window=7).mean())))
-        df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
-        df['signal'] = df['macd'].ewm(span=4).mean()
-        df['atr'] = df['high'] - df['low']
+            # Calcul des indicateurs
+            df['ema20'] = df['close'].ewm(span=20).mean()
+            df['ema50'] = df['close'].ewm(span=50).mean()
+            df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=7).mean() /
+                                            df['close'].diff().lt(0).rolling(window=7).mean())))
+            df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
+            df['signal'] = df['macd'].ewm(span=4).mean()
+            df['atr'] = df['high'] - df['low']
 
-        last = df.iloc[-1]
-        price = last['close']
-        sl = entry_price - 2 * last['atr']  # SL basé sur ATR * 2 pour être plus agressif
-        tp = entry_price + 2 * last['atr']  # TP basé sur ATR * 2
+            last = df.iloc[-1]
+            price = last['close']
+            sl = entry_price - 2 * last['atr']  # SL basé sur ATR * 2 pour être plus agressif
+            tp = entry_price + 2 * last['atr']  # TP basé sur ATR * 2
 
-        # Conditions de trading simplifiées pour un trading plus agressif
-        if not active_position:
-            # Achat agressif si RSI < 40 et MACD croise au-dessus du signal
-            if last['rsi'] < 40 and last['macd'] > last['signal']:
-                balance = exchange.fetch_balance()
-                usdt = balance['USDT']['free']
-                position_size = round((usdt * 0.02) / price, 1)  # Taille de position augmentée (2% du solde)
-                exchange.create_market_buy_order(symbol, position_size)
-                entry_price = price
-                highest_price = price
-                active_position = True
-                last_order_info = {"amount": position_size, "entry_price": entry_price}
-                log_trade([datetime.now(), "buy", price, position_size, tp, sl])
-                send_telegram_message_sync(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}")
-        elif last['rsi'] > 60 and last['macd'] < last['signal']:
-            exchange.create_market_sell_order(symbol, last_order_info['amount'])
-            trade_losses += 1
-            send_telegram_message_sync(f"⛔️ SL touché à {price:.4f} ❌ Position coupée.")
-            active_position = False
-            trade_count += 1
+            # Conditions de trading simplifiées pour un trading plus agressif
+            if not active_position:
+                # Achat agressif si RSI < 40 et MACD croise au-dessus du signal
+                if last['rsi'] < 40 and last['macd'] > last['signal']:
+                    balance = exchange.fetch_balance()
+                    usdt = balance['USDT']['free']
+                    position_size = round((usdt * 0.02) / price, 1)  # Taille de position augmentée (2% du solde)
+                    exchange.create_market_buy_order(symbol, position_size)
+                    entry_price = price
+                    highest_price = price
+                    active_position = True
+                    last_order_info = {"amount": position_size, "entry_price": entry_price}
+                    log_trade([datetime.now(), f"buy {symbol}", price, position_size, tp, sl])
+                    send_telegram_message_sync(f"🟢 Achat {symbol} à {entry_price:.4f} | TP: {tp} | SL: {sl}")
+            elif last['rsi'] > 60 and last['macd'] < last['signal']:
+                exchange.create_market_sell_order(symbol, last_order_info['amount'])
+                trade_losses += 1
+                send_telegram_message_sync(f"⛔️ SL touché à {price:.4f} sur {symbol} ❌ Position coupée.")
+                active_position = False
+                trade_count += 1
 
     except Exception as e:
         logging.error(f"Erreur trading_loop : {e}")
