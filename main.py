@@ -44,6 +44,12 @@ bot_running = True
 
 app = Flask(__name__)
 
+@app.route(f"/bot{TELEGRAM_BOT_TOKEN}", methods=["POST"])
+def webhook():
+    update = request.get_json()
+    # Traiter l'update ici
+    return "OK", 200
+
 @app.route("/")
 def home():
     return "Bot actif."
