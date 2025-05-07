@@ -104,10 +104,13 @@ def trading_loop():
         df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df['ema20'] = df['close'].ewm(span=20).mean()
-        df['ema50'] = df['close'].ewm(span=50).mean()
-        df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=14).mean() /
-                                        df['close'].diff().lt(0).rolling(window=14).mean())))
+df['ema20'] = df['close'].ewm(span=20).mean()
+df['ema50'] = df['close'].ewm(span=50).mean()
+df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=7).mean() / 
+                                df['close'].diff().lt(0).rolling(window=7).mean())))
+df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
+df['signal'] = df['macd'].ewm(span=4).mean()
+
         df['atr'] = df['high'] - df['low']
         
         last = df.iloc[-1]
@@ -118,7 +121,8 @@ def trading_loop():
         # Conditions de trading simplifiées pour un trading plus agressif
         if not active_position:
             # Acheter si RSI < 45 et EMA20 est proche de EMA50 (98%)
-            if last['rsi'] < 45 and last['ema20'] > 0.98 * last['ema50']:  # RSI plus élevé et EMA proche
+          # Achat agressif si RSI < 40 et MACD croise au-dessus du signal
+if last['rsi'] < 40 and last['macd'] > last['signal']:
                 balance = exchange.fetch_balance()
                 usdt = balance['USDT']['free']
                 position_size = round((usdt * 0.02) / price, 1)  # Taille de position augmentée (2% du solde)
@@ -129,7 +133,7 @@ def trading_loop():
                 last_order_info = {"amount": position_size, "entry_price": entry_price}
                 log_trade([datetime.now(), "buy", price, position_size, tp, sl])
                 send_telegram_message_sync(f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}")
-        elif last['rsi'] > 55 and price < entry_price:  # RSI > 55 et prix baissé (prise de bénéfice)
+        elif last['rsi'] > 60 and last['macd'] < last['signal']:
             exchange.create_market_sell_order(symbol, last_order_info['amount'])
             trade_losses += 1
             send_telegram_message_sync(f"⛔️ SL touché à {price:.4f} ❌ Position coupée.")
@@ -140,7 +144,7 @@ def trading_loop():
         logging.error(f"Erreur trading_loop : {e}")
         send_telegram_message_sync(f"Erreur stratégie : {e}")
 
-schedule.every(10).seconds.do(trading_loop)  # Vérifie plus fréquemment les opportunités
+schedule.every(5).seconds.do(trading_loop)
 
 
 # === OUTILS ===
