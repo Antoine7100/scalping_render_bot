@@ -8,12 +8,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # Vérification des processus liés au bot Telegram
 try:
-    result = subprocess.run(['pgrep', '-f', 'python main.py'], capture_output=True, text=True)
+    result = subprocess.run(['pgrep', '-fl', 'python main.py'], capture_output=True, text=True)
     pids = result.stdout.splitlines()
-    for pid in pids:
-        if pid.isdigit():
-            subprocess.run(['kill', pid])
-            logging.info(f"Processus bot spécifique arrêté : {pid}")
+    for line in pids:
+        if 'python' in line:
+            pid = line.split()[0]
+            if pid.isdigit():
+                logging.info(f"Arrêt du processus bot existant : {pid}")
+                subprocess.run(['kill', pid])
 except Exception as e:
     logging.warning(f"Erreur lors de l'arrêt des processus bot spécifiques : {e}")
 
