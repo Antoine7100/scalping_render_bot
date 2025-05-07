@@ -6,16 +6,16 @@ from telegram import Bot
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# Arrêter tous les processus du bot en cours
+# Vérification des processus liés au bot Telegram
 try:
-    result = subprocess.run(['pgrep', '-f', 'python'], capture_output=True, text=True)
+    result = subprocess.run(['pgrep', '-f', 'python main.py'], capture_output=True, text=True)
     pids = result.stdout.splitlines()
     for pid in pids:
         if pid.isdigit():
-            subprocess.run(['kill', '-9', pid])
-            logging.info(f"Processus bot arrêté : {pid}")
+            subprocess.run(['kill', pid])
+            logging.info(f"Processus bot spécifique arrêté : {pid}")
 except Exception as e:
-    logging.warning(f"Erreur lors de l'arrêt des processus bot : {e}")
+    logging.warning(f"Erreur lors de l'arrêt des processus bot spécifiques : {e}")
 
 # Supprimer automatiquement le webhook au démarrage
 try:
@@ -31,7 +31,6 @@ try:
     Bot(token=TELEGRAM_BOT_TOKEN).delete_webhook()
 except Exception as e:
     logging.warning(f"Impossible de supprimer le webhook via la bibliothèque Telegram : {e}")
-
 
 import ccxt
 import pandas as pd
@@ -58,6 +57,7 @@ exchange = ccxt.bybit({
     'enableRateLimit': True,
     'options': {'defaultType': 'future'}
 })
+
 
 
 symbol = "ADA/USDT:USDT"
