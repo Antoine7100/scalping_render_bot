@@ -264,9 +264,10 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
 
+
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Important pour éviter les erreurs de Telegram
+    await query.answer()  # Confirmer l'interaction avec Telegram
 
     data = query.data
     if data == "startbot":
@@ -283,6 +284,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await bilan(update, context)
 
 
+
 async def launch_telegram():
     app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app_telegram.add_handler(CommandHandler("startbot", start_bot))
@@ -292,7 +294,7 @@ async def launch_telegram():
     app_telegram.add_handler(CommandHandler("bilan", bilan))
     app_telegram.add_handler(CommandHandler("myid", myid))
     app_telegram.add_handler(CommandHandler("help", help_command))
-    app_telegram.add_handler(CallbackQueryHandler(handle_button))
+    app_telegram.add_handler(CallbackQueryHandler(handle_button))  # <-- Important !
     print("✅ Telegram bot en ligne. En attente de commandes...")
     await app_telegram.run_polling()
 
