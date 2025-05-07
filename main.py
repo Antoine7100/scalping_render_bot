@@ -45,11 +45,21 @@ app = Flask(__name__)
 def home():
     return "Bot actif."
 
-async def start_bot():
+async def start_telegram_bot():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    application.run_polling()
+    application.add_handler(CommandHandler("start", lambda update, context: update.message.reply_text("Bot actif!")))
+    application.add_handler(CommandHandler("stop", lambda update, context: update.message.reply_text("Bot arrêté.")))
+    application.add_handler(CommandHandler("status", lambda update, context: update.message.reply_text("Le bot est actif." if bot_running else "Le bot est arrêté.")))
+    await application.start()
+    await application.updater.start_polling()
 
-Thread(target=lambda: asyncio.run(start_bot()), daemon=True).start()
+# Démarrage du bot Telegram dans un thread séparé
+def run_telegram_bot():
+    asyncio.run(start_telegram_bot())
+
+telegram_thread = Thread(target=run_telegram_bot)
+telegram_thread.start()
+
 
 # === Gestion des conflits de processus ===
 lock_file = "/tmp/bot_running.lock"
