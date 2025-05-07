@@ -7,6 +7,17 @@ from telegram import Bot
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
+lock_file = "/tmp/bot_running.lock"
+
+# Vérifier si le bot est déjà en cours d'exécution
+if os.path.exists(lock_file):
+    logging.warning("Une instance du bot est déjà en cours. Fermeture pour éviter les conflits.")
+    exit(0)
+
+# Créer un fichier de verrou pour indiquer que le bot est en cours
+with open(lock_file, 'w') as f:
+    f.write(str(os.getpid()))
+
 # Vérification des processus liés au bot Telegram
 try:
     result = subprocess.run(['pgrep', '-fl', 'python main.py'], capture_output=True, text=True)
@@ -17,7 +28,7 @@ try:
             if pid.isdigit():
                 logging.info(f"Arrêt du processus bot existant : {pid}")
                 subprocess.run(['kill', pid])
-                time.sleep(1)  # Pause pour laisser le processus se fermer correctement
+                time.sleep(2)  # Pause pour laisser le processus se fermer correctement
                 # Vérification si le processus est toujours actif
                 check = subprocess.run(['pgrep', '-f', 'python main.py'], capture_output=True, text=True)
                 if pid in check.stdout:
@@ -66,6 +77,14 @@ exchange = ccxt.bybit({
     'enableRateLimit': True,
     'options': {'defaultType': 'future'}
 })
+
+# Supprimer le fichier de verrou à la fin de l'exécution
+def remove_lock():
+    if os.path.exists(lock_file):
+        os.remove(lock_file)
+
+import atexit
+atexit.register(remove_lock)
 
 
 
