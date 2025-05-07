@@ -109,11 +109,12 @@ def trading_loop():
             df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-            # Indicateurs techniques agressifs
+            # Indicateurs techniques ultra-agressifs
             df['ema5'] = df['close'].ewm(span=5).mean()
             df['ema20'] = df['close'].ewm(span=20).mean()
             df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=5).mean() /
                                             df['close'].diff().lt(0).rolling(window=5).mean())))
+            df['stoch_rsi'] = (df['rsi'] - df['rsi'].rolling(window=14).min()) / (df['rsi'].rolling(window=14).max() - df['rsi'].rolling(window=14).min())
             df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
             df['signal'] = df['macd'].ewm(span=4).mean()
             df['atr'] = df['high'] - df['low']
@@ -123,9 +124,9 @@ def trading_loop():
             sl = entry_price - 1.5 * last['atr']
             tp = entry_price + 1.5 * last['atr']
 
-            # Trading agressif : Achat si RSI < 45 et MACD > signal
-            if not active_position:
-                if last['rsi'] < 45 and last['macd'] > last['signal']:
+            # Trading ultra-agressif : Achat si RSI < 50 ou Stoch RSI < 0.2
+            if not active_position or last['rsi'] < 50 or last['stoch_rsi'] < 0.2:
+                if last['macd'] > last['signal']:
                     balance = exchange.fetch_balance()
                     usdt = balance['USDT']['free']
                     position_size = round((usdt * 0.03) / price, 1)
@@ -136,18 +137,20 @@ def trading_loop():
                     last_order_info = {"amount": position_size, "entry_price": entry_price}
                     log_trade([datetime.now(), f"buy {symbol}", price, position_size, tp, sl])
                     send_telegram_message_sync(f"🟢 Achat {symbol} à {entry_price:.4f} | TP: {tp} | SL: {sl}")
-            elif last['rsi'] > 55 and last['macd'] < last['signal']:
-                exchange.create_market_sell_order(symbol, last_order_info['amount'])
-                trade_losses += 1
-                send_telegram_message_sync(f"⛔️ SL touché à {price:.4f} sur {symbol} ❌ Position coupée.")
-                active_position = False
-                trade_count += 1
+            elif last['rsi'] > 50 or last['stoch_rsi'] > 0.8:
+                if last['macd'] < last['signal']:
+                    exchange.create_market_sell_order(symbol, last_order_info['amount'])
+                    trade_losses += 1
+                    send_telegram_message_sync(f"⛔️ SL touché à {price:.4f} sur {symbol} ❌ Position coupée.")
+                    active_position = False
+                    trade_count += 1
 
     except Exception as e:
         logging.error(f"Erreur trading_loop : {e}")
         send_telegram_message_sync(f"Erreur stratégie : {e}")
 
 schedule.every(2).seconds.do(trading_loop)
+
 
 
 # === OUTILS ===
