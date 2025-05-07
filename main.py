@@ -2,7 +2,7 @@ import os
 import requests
 import logging
 import time
-from flask import Flask
+from flask import Flask, request
 from telegram import Bot
 from telegram.ext import ApplicationBuilder, CommandHandler
 import ccxt
