@@ -23,10 +23,26 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = "1440739670"
 TELEGRAM_USER_ID = 1440739670
 
+import os
+import requests
+import logging
+from telegram import Bot
+
+# Supprimer automatiquement le webhook au démarrage
+try:
+    response = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteWebhook")
+    if response.status_code == 200:
+        logging.info("Webhook supprimé avec succès.")
+    else:
+        logging.warning(f"Échec de la suppression du webhook : {response.text}")
+except Exception as e:
+    logging.error(f"Erreur lors de la suppression du webhook : {e}")
+
 try:
     Bot(token=TELEGRAM_BOT_TOKEN).delete_webhook()
 except Exception as e:
-    logging.warning(f"Impossible de supprimer le webhook : {e}")
+    logging.warning(f"Impossible de supprimer le webhook via la bibliothèque Telegram : {e}")
+
 
 exchange = ccxt.bybit({
     'apiKey': api_key,
