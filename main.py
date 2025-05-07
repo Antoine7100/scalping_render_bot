@@ -101,15 +101,23 @@ def trading_loop():
     if not bot_running:
         return
     try:
-        df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-df['ema20'] = df['close'].ewm(span=20).mean()
-df['ema50'] = df['close'].ewm(span=50).mean()
-df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=7).mean() / 
-                                df['close'].diff().lt(0).rolling(window=7).mean())))
-df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
-df['signal'] = df['macd'].ewm(span=4).mean()
+    df = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+    df = pd.DataFrame(df, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+    # Calcul des indicateurs
+    df['ema20'] = df['close'].ewm(span=20).mean()
+    df['ema50'] = df['close'].ewm(span=50).mean()
+    df['rsi'] = 100 - (100 / (1 + (df['close'].diff().gt(0).rolling(window=7).mean() /
+                                    df['close'].diff().lt(0).rolling(window=7).mean())))
+    df['macd'] = df['close'].ewm(span=6).mean() - df['close'].ewm(span=13).mean()
+    df['signal'] = df['macd'].ewm(span=4).mean()
+
+except Exception as e:
+    logging.error(f"Erreur lors du calcul des indicateurs : {e}")
+    send_telegram_message_sync(f"Erreur lors du calcul des indicateurs : {e}")
+    return
+
 
         df['atr'] = df['high'] - df['low']
         
