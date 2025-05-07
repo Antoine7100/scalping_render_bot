@@ -56,7 +56,7 @@ async def start_telegram_bot():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     await application.initialize()
 
-    # Définir l'URL du webhook
+    # Définir l'URL du webhook avec le port spécifique
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
     await application.bot.set_webhook(url=webhook_url)
 
@@ -64,15 +64,17 @@ async def start_telegram_bot():
     application.add_handler(CommandHandler("stop", lambda update, context: update.message.reply_text("Bot arrêté.")))
     application.add_handler(CommandHandler("status", lambda update, context: update.message.reply_text("Le bot est actif." if bot_running else "Le bot est arrêté.")))
 
-    # Utiliser le serveur interne de python-telegram-bot pour les webhooks
+    # Démarrer le bot avec son propre serveur intégré
     await application.start()
     await application.updater.start_webhook(
         listen="0.0.0.0",
-        port=int(os.getenv("PORT", 10000)),
-        url_path=f"/bot{TELEGRAM_BOT_TOKEN}"
+        port=int(os.getenv("TELEGRAM_PORT", 8443)),  # Utiliser un port différent
+        url_path=f"/bot{TELEGRAM_BOT_TOKEN}",
+        webhook_url=webhook_url
     )
     print("Bot Telegram démarré avec webhook")
     await application.idle()
+
 
 
 async def run_server():
@@ -320,10 +322,11 @@ if __name__ == "__main__":
     import nest_asyncio
     from waitress import serve
     nest_asyncio.apply()
-    
-    # Lancer le serveur Flask avec Waitress pour la production
+
+    # Serveur Flask séparé
     threading.Thread(target=lambda: serve(app, host="0.0.0.0", port=10000)).start()
     asyncio.get_event_loop().run_until_complete(launch_telegram())
+
 
 
 
