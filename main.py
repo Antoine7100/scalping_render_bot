@@ -2,6 +2,7 @@ import os
 import requests
 import logging
 import subprocess
+import time
 from telegram import Bot
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -16,6 +17,12 @@ try:
             if pid.isdigit():
                 logging.info(f"Arrêt du processus bot existant : {pid}")
                 subprocess.run(['kill', pid])
+                time.sleep(1)  # Pause pour laisser le processus se fermer correctement
+                # Vérification si le processus est toujours actif
+                check = subprocess.run(['pgrep', '-f', 'python main.py'], capture_output=True, text=True)
+                if pid in check.stdout:
+                    logging.warning(f"Le processus {pid} est toujours actif, tentative d'arrêt forcé.")
+                    subprocess.run(['kill', '-9', pid])
 except Exception as e:
     logging.warning(f"Erreur lors de l'arrêt des processus bot spécifiques : {e}")
 
