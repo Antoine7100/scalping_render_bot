@@ -56,19 +56,20 @@ async def start_telegram_bot():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     await application.initialize()
 
-    # URL du webhook basée sur l'URL Render
+    # Définir l'URL du webhook avec le bon port
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
     await application.bot.set_webhook(url=webhook_url)
 
+    # Ajouter les handlers
     application.add_handler(CommandHandler("start", lambda update, context: update.message.reply_text("Bot actif!")))
     application.add_handler(CommandHandler("stop", lambda update, context: update.message.reply_text("Bot arrêté.")))
     application.add_handler(CommandHandler("status", lambda update, context: update.message.reply_text("Le bot est actif." if bot_running else "Le bot est arrêté.")))
 
-    # Démarrer le bot Telegram en mode webhook sur un port différent
+    # Lancer le bot Telegram en mode webhook sur le port 8443
     await application.start()
     await application.updater.start_webhook(
         listen="0.0.0.0",
-        port=8443,  # Port distinct pour le webhook
+        port=int(os.getenv("TELEGRAM_PORT", 8443)),  # Port distinct pour le webhook
         url_path=f"/bot{TELEGRAM_BOT_TOKEN}",
         webhook_url=webhook_url
     )
