@@ -2,10 +2,9 @@ import os
 import requests
 import logging
 import time
-from threading import Thread
 from flask import Flask
 from telegram import Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler
 import ccxt
 import pandas as pd
 from datetime import datetime
@@ -52,6 +51,12 @@ async def start_telegram_bot():
     application.add_handler(CommandHandler("status", lambda update, context: update.message.reply_text("Le bot est actif." if bot_running else "Le bot est arrêté.")))
     await application.start()
     await application.updater.start_polling()
+
+async def run_server():
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+
+async def main():
+    await asyncio.gather(start_telegram_bot(), run_server())
 
 # Démarrage du bot Telegram dans un thread séparé
 def run_telegram_bot():
