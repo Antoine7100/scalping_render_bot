@@ -58,20 +58,21 @@ async def start_telegram_bot():
 
     # Définir l'URL du webhook
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
-    await application.bot.set_webhook(url=webhook_url)  # <-- Bien placé dans la fonction async
+    await application.bot.set_webhook(url=webhook_url)
 
     application.add_handler(CommandHandler("start", lambda update, context: update.message.reply_text("Bot actif!")))
     application.add_handler(CommandHandler("stop", lambda update, context: update.message.reply_text("Bot arrêté.")))
     application.add_handler(CommandHandler("status", lambda update, context: update.message.reply_text("Le bot est actif." if bot_running else "Le bot est arrêté.")))
 
+    # Utiliser le serveur interne de python-telegram-bot pour les webhooks
     await application.start()
     await application.updater.start_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 10000)),
-        url_path=f"/bot{TELEGRAM_BOT_TOKEN}",
-        webhook_url=webhook_url
+        url_path=f"/bot{TELEGRAM_BOT_TOKEN}"
     )
     print("Bot Telegram démarré avec webhook")
+    await application.idle()
 
 
 async def run_server():
