@@ -4,7 +4,7 @@ import logging
 import time
 from flask import Flask, request
 from telegram import Bot
-from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 import ccxt
 import pandas as pd
 from datetime import datetime
@@ -13,8 +13,7 @@ import asyncio
 import schedule
 from threading import Thread
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
-
+from telegram.ext import ContextTypes
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
@@ -83,7 +82,10 @@ async def start_telegram_bot():
 
 
 async def run_server():
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    print("🚀 Démarrage du serveur Flask avec Waitress.")
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+
 
 async def main():
     await asyncio.gather(start_telegram_bot(), run_server())
@@ -327,15 +329,16 @@ async def launch_telegram():
         await app_telegram.updater.stop()
 
     # Configuration propre pour le mode webhook
-    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
+       webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
+    await app_telegram.initialize()
     await app_telegram.bot.set_webhook(url=webhook_url)
-    await app_telegram.run_webhook(
+    await app_telegram.start_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 10000)),
         url_path=f"/bot{TELEGRAM_BOT_TOKEN}",
         webhook_url=webhook_url
     )
-    await app_telegram.idle()
+
 
 
     # Utiliser uniquement le webhook pour éviter le conflit avec le polling
