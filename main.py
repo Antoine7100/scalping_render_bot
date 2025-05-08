@@ -68,8 +68,8 @@ async def start_telegram_bot():
     application.add_handler(CommandHandler("start", lambda update, context: update.message.reply_text("Bot actif!")))
     application.add_handler(CommandHandler("stop", lambda update, context: update.message.reply_text("Bot arrêté.")))
 
-     # Configuration correcte du webhook
-        webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
+ # Configuration correcte du webhook
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
     await app_telegram.bot.set_webhook(url=webhook_url)
     await app_telegram.run_webhook(
         listen="0.0.0.0",
@@ -321,7 +321,7 @@ async def launch_telegram():
     app_telegram.add_handler(CommandHandler("myid", myid))
     app_telegram.add_handler(CommandHandler("help", help_command))
     app_telegram.add_handler(CallbackQueryHandler(button))
-    print("✅ Telegram bot en ligne. En attente de commandes...")
+    print("✅ Bot Telegram en ligne et opérationnel.")
 
     # Désactiver explicitement le polling pour garantir le mode webhook
     if app_telegram.updater:
