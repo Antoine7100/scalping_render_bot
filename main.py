@@ -320,15 +320,15 @@ def run():
                 active_position = True
                 last_order_info = {"amount": amount_qty, "entry_price": entry_price}
 
-                tp = round(entry_price + 2 * atr, 4)
-                sl = round(entry_price - 1.5 * atr, 4)
-send_telegram_message(
-    f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}\n"
-    f"MACD: {macd:.4f} > Signal: {macdsignal:.4f}, RSI: {rsi:.2f}, EMA20 > EMA50"
-)
-                log_trade("BUY", entry_price, amount_qty, tp, sl)
-            except Exception as e:
-                send_telegram_message(f"❌ Erreur achat : {e}")
+    tp = round(entry_price + 2 * atr, 4)
+    sl = round(entry_price - 1.5 * atr, 4)
+    send_telegram_message(
+        f"🟢 Achat ADA à {entry_price:.4f} | TP: {tp} | SL: {sl}\n"
+        f"MACD: {macd:.4f} > Signal: {macdsignal:.4f}, RSI: {rsi:.2f}, EMA20 > EMA50"
+    )
+    log_trade("BUY", entry_price, amount_qty, tp, sl)
+except Exception as e:
+    send_telegram_message(f"❌ Erreur achat : {e}")
     else:
         current_price = df['close'].iloc[-1]
         highest_price = max(highest_price, current_price)
