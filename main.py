@@ -328,7 +328,10 @@ async def launch_telegram():
         url_path=f"/bot{TELEGRAM_BOT_TOKEN}",
         webhook_url=f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot{TELEGRAM_BOT_TOKEN}"
     )
+    # Attendre indéfiniment pour maintenir le bot actif
+    await app_telegram.updater.stop()
     await app_telegram.idle()
+
 
 
 if __name__ == "__main__":
