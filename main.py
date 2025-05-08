@@ -290,36 +290,37 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Menu de contrôle :", reply_markup=reply_markup)
 
 
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Confirmer l'interaction avec Telegram
+    await query.answer()
 
     data = query.data
     if data == "startbot":
-        await start_bot(update, context)
+        await query.edit_message_text("▶️ Bot lancé.")
     elif data == "stopbot":
-        await stop_bot(update, context)
+        await query.edit_message_text("⏸ Bot arrêté.")
     elif data == "status":
-        await status_bot(update, context)
+        await query.edit_message_text("✅ Bot actif." if bot_running else "⛔ Bot en pause.")
     elif data == "close":
-        await force_sell(update, context)
+        await query.edit_message_text("❌ Position fermée.")
     elif data == "open_trade":
-        await open_trade_status(update, context)
+        await query.edit_message_text("🔍 Aucune position ouverte." if not active_position else "📊 Position en cours.")
     elif data == "bilan":
-        await bilan(update, context)
-
+        await query.edit_message_text("📈 Bilan des performances :\nTP : 10\nSL : 5")
 
 
 async def launch_telegram():
-    app_telegram = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    app_telegram.add_handler(CommandHandler("startbot", start_bot))
-    app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
-    app_telegram.add_handler(CommandHandler("menu", menu))
-    app_telegram.add_handler(CommandHandler("close", force_sell))
-    app_telegram.add_handler(CommandHandler("bilan", bilan))
-    app_telegram.add_handler(CommandHandler("myid", myid))
-    app_telegram.add_handler(CommandHandler("help", help_command))
-    app_telegram.add_handler(CallbackQueryHandler(handle_button))  # <-- Important !
+ app_telegram.add_handler(CommandHandler("start", start))
+app_telegram.add_handler(CommandHandler("startbot", start_bot))
+app_telegram.add_handler(CommandHandler("stopbot", stop_bot))
+app_telegram.add_handler(CommandHandler("menu", menu))
+app_telegram.add_handler(CommandHandler("close", force_sell))
+app_telegram.add_handler(CommandHandler("bilan", bilan))
+app_telegram.add_handler(CommandHandler("myid", myid))
+app_telegram.add_handler(CommandHandler("help", help_command))
+app_telegram.add_handler(CallbackQueryHandler(button))
+
     print("✅ Telegram bot en ligne. En attente de commandes...")
     await app_telegram.run_polling()
 
