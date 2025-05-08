@@ -322,6 +322,7 @@ async def launch_telegram():
     app_telegram.add_handler(CallbackQueryHandler(button))
     print("✅ Telegram bot en ligne. En attente de commandes...")
     # Utiliser uniquement le webhook pour éviter le conflit avec le polling
+    await app_telegram.start()
     await app_telegram.start_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 10000)),
